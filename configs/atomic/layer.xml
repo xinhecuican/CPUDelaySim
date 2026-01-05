@@ -1,0 +1,7 @@
+
+<root>
+  <AtomicCPU/>
+  <CacheManager>
+    <Uart container="devices" type="vector"/>
+  </CacheManager>
+</root>

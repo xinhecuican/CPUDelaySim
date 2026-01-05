@@ -1,0 +1,108 @@
+#ifndef CACHE_H
+#define CACHE_H
+#include "common/base.h"
+#include "cache/replace/replace.h"
+
+enum snoop_req_t {
+    SNOOP_NONE = 0,
+    READ_ONCE = 1,
+    READ_SHARED = 2,
+    READ_CLEAN = 3,
+    READ_UNIQUE = 4,
+    MAKE_UNIQUE = 5,
+    CLEAN_SHARED = 6,
+    CLEAN_INVALID = 7,
+    CLEAN_UNIQUE = 8,
+    MAKE_INVALID = 9,
+    READ_END = 9,
+    WRITE_UNIQUE = 10,
+    WRITE_CLEAN = 11,
+    WRITE_BACK = 12,
+    WRITE_EVICT = 13
+};
+
+struct CacheTagv {
+    uint64_t tag;
+    bool valid;
+    bool shared;
+    bool dirty;
+};
+
+typedef std::function<void(int, CacheTagv*)> cache_callback_t;
+
+class Cache : public Base {
+public:
+    virtual ~Cache();
+    /**
+     * @brief cache lookup
+     * 
+     * @param addr address to lookup
+     * @param req snoop request type
+     * @param size size to lookup
+     * @return whether the lookup is successful
+     */
+    virtual bool lookup(int id, snoop_req_t req, uint64_t addr, uint32_t size) = 0;
+    virtual void setParentCallback() {}
+    virtual void load() override;
+    virtual void afterLoad();
+    void setParent(Cache* parent);
+    void splitAddr(uint64_t addr, uint64_t& tag, uint32_t& set, uint32_t& offset);
+    uint32_t getOffset(uint64_t addr);
+    int getId() { return id; }
+    void setCallback(cache_callback_t const & callback);
+    int getLineSize() { return line_size; }
+    int getLevel() { return level; }
+
+protected:
+    CacheTagv* match(uint64_t tag, uint32_t set);
+
+protected:
+    /**
+     * @ingroup config
+     * @brief cache line size
+     */
+    int line_size = 64;
+    /**
+     * @ingroup config
+     * @brief cache set size
+     */
+    int set_size = 64;
+    /**
+     * @ingroup config
+     * @brief cache way num
+     */
+    int way = 8;
+    /**
+     * @ingroup config
+     * @brief cache access delay
+     */
+    int delay = 1;
+    /**
+     * @ingroup config
+     * @brief cache level, 0 is the L1 cache
+     */
+    int level = 0;
+    /**
+     * @ingroup config
+     * @brief cache id
+     */
+    int id = 0;
+    /**
+     * @ingroup config
+     * @brief cache replace method
+     */
+    std::string replace_method = "lru";
+
+    int line_byte = line_size / 8;
+    Cache* parent = nullptr;
+    std::map<int, Cache*> children;
+    CacheTagv*** tagvs;
+    uint32_t tag_offset;
+    uint32_t index_offset;
+    uint32_t set_mask;
+    uint32_t line_mask;
+    Replace* replace = nullptr;
+    std::vector<cache_callback_t> callbacks;
+};
+
+#endif

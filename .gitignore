@@ -1,0 +1,9 @@
+payloads/
+build/
+.xmake/
+.vscode/
+.DS_Store
+obj/
+__pycache__/
+logs/
+thirdparty/

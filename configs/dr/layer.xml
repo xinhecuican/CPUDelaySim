@@ -1,0 +1,22 @@
+
+<root>
+  <CPU>
+    <DRFrontend container="frontend">
+      <FsqPredictor container="predictor">
+        <Bimodal container="branch_predictors" type="vector"/>
+        <BasicBTB container="btbs" type="vector"/>
+        <HistoryManager container="history_manager">
+          <GHR container="ghr"/>
+        </HistoryManager>
+      </FsqPredictor>
+    </DRFrontend>
+    <DRBackend container="backend">
+      <Backend />
+    </DRBackend>
+  </CPU>
+  <CacheManager>
+    <Memory container="memory"/>
+    <ICache container="l1_caches" type="vector"/>
+    <DCache container="l1_caches" type="vector"/>
+  </CacheManager>
+</root>

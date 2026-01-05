@@ -1,0 +1,34 @@
+#ifndef RISCVARCH_H
+#define RISCVARCH_H
+#include "arch/arch.h"
+#include "cache/cachemanager.h"
+#include "arch/riscv/archstate.h"
+
+namespace cds::arch::riscv {
+
+class RiscvArch : public Arch {
+public:
+    bool getStream(uint64_t pc, uint8_t pred, bool btbv, BTBEntry* btb_entry, FetchStream* stream) override;
+    void translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, bool& exception) override;
+    int decode(uint64_t paddr, DecodeInfo* info) override;
+    bool paddrRead(uint64_t paddr, int size, FETCH_TYPE type, uint8_t* data) override;
+    bool paddrWrite(uint64_t paddr, int size, FETCH_TYPE type, uint8_t* data) override;
+    void afterLoad() override;
+    uint64_t updateEnv() override;
+    uint64_t getStartPC() override { return 0x80000000; }
+private:
+    void fetch(uint64_t paddr, uint32_t* inst, bool& rvc, uint8_t* size);
+    bool checkPermission(PTE& pte, bool ok, uint64_t vaddr, int type);
+    void initOps();
+private:
+    Memory* memory;
+    ArchEnv* env;
+    ArchState* state;
+
+    int ifetch_mmu_state;
+    int data_mmu_state;
+};
+
+REGISTER_CLASS(RiscvArch)
+} // namespace cds::arch::riscv
+#endif
