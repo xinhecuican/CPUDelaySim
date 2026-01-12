@@ -1,5 +1,6 @@
 #include "cache/cache.h"
 #include "cache/replace/lru.h"
+#include "common/log.h"
 
 void Cache::setParent(Cache* parent) {
     this->parent = parent;
@@ -40,7 +41,7 @@ void Cache::setCallback(cache_callback_t const & callback) {
 
 void Cache::afterLoad() {
     if (replace == nullptr) {
-        spdlog::error("Replace policy not set");
+        Log::error("Replace policy not set");
         exit(1);
     }
     if (replace_method == "lru") {

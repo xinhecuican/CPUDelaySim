@@ -1,5 +1,9 @@
 #include "cache/memory.h"
 #include <sys/mman.h>
+#include "common/log.h"
+#include "config.h"
+#include "common/emuproxy.h"
+#include "common/log.h"
 
 Memory::Memory(const std::string& filename) {
     this->filename = filename;
@@ -36,15 +40,20 @@ void Memory::afterLoad() {
     result->dirty = false;
     ram = (uint8_t *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if (ram == (uint8_t*)MAP_FAILED) {
-        spdlog::error("could not mmap memory size {}", size);
+        Log::error("could not mmap memory size {}", size);
         exit(1);
     }
+
+#ifdef LOG_MEM
+    Log::init("mem", Config::getLogFilePath("mem.log"));
+#endif
 
 #ifdef DRAMSIM
     for (int i = 0; i < dram_queue_size; i++) {
         DRAMMeta* meta = new DRAMMeta;
         dram_idle_queue.push(new CoDRAMRequest(0, 0, meta));
     }
+    dram_outpath = Config::getLogFilePath("");
     dram = new ComplexCoDRAMsim3(dram_config, dram_outpath);
 #endif
 
@@ -67,7 +76,9 @@ void Memory::afterLoad() {
 
     fseek(fp, 0, SEEK_SET);
     int ret = fread(ram, filesize, 1, fp);
-
+#ifdef DIFFTEST
+    NemuProxy::getInstance().memcpy(0x80000000, ram, filesize, DUT_TO_REF);
+#endif
     assert(ret == 1);
     fclose(fp);
 }
@@ -97,6 +108,9 @@ void Memory::tick() {
         dram_idle_queue.push(const_cast<CoDRAMRequest*>(wresp->req));
     }
 #endif
+    for (auto device : devices) {
+        device->tick();
+    }
 }
 
 bool Memory::memoryRead(int id, uint64_t addr, uint32_t size) {
@@ -179,10 +193,20 @@ void Memory::paddrRead(uint64_t paddr, uint32_t size, uint8_t* data, bool& mmio)
         if (unlikely(device->inRange(paddr))) {
             mmio = true;
             device->read(paddr, size, data);
+#ifdef DIFFTEST
+            NemuProxy::getInstance().memcpy(paddr, data, 1, DUT_TO_REF);
+#endif
+#ifdef LOG_MEM
+            Log::trace("mem", "mmio read 0x{:x} {} {:x}", paddr, size, *data);
+#endif
             return;
         }
     }
     memcpy(data, ram + paddr - 0x80000000, size);
+#ifdef LOG_MEM
+    uint64_t val = *((uint64_t*)(ram + paddr - 0x80000000));
+    Log::trace("mem", "read 0x{:x} {} {:x}", paddr, size, val);
+#endif
 }
 
 void Memory::paddrWrite(uint64_t paddr, uint32_t size, uint8_t* data, bool& mmio) {
@@ -191,10 +215,17 @@ void Memory::paddrWrite(uint64_t paddr, uint32_t size, uint8_t* data, bool& mmio
         if (unlikely(device->inRange(paddr))) {
             mmio = true;
             device->write(paddr, size, data);
+#ifdef LOG_MEM
+            Log::trace("mem", "mmio write 0x{:x} {} {:x}", paddr, size, *data);
+#endif
             return;
         }
     }
     memcpy(ram + paddr - 0x80000000, data, size);
+#ifdef LOG_MEM
+    uint64_t val = *((uint64_t*)(ram + paddr - 0x80000000));
+    Log::trace("mem", "write 0x{:x} {} {:x}", paddr, size, val);
+#endif
 }
 
 void Memory::setDevices(std::vector<Device*> devices) {

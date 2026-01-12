@@ -1,4 +1,6 @@
 #include "cache/cachemanager.h"
+#include "device/irqhandler.h"
+#include "common/log.h"
 
 void CacheManager::afterLoad() {
     if (l3_caches.size() > 0) {
@@ -28,6 +30,20 @@ void CacheManager::afterLoad() {
     for (auto cache : l3_caches) {
         cache->afterLoad();
     }
+    for (auto device : devices) {
+        if (dynamic_cast<IrqHandler*>(device) != nullptr) {
+            irq_handler = dynamic_cast<IrqHandler*>(device);
+            break;
+        }
+    }
+    if (irq_handler != nullptr) {
+        for (auto device : devices) {
+            device->setIrqHandler(irq_handler);
+        }
+    } else {
+        Log::error("No irq handler found, some devices may not work properly");
+    }
+
     memory->setDevices(devices);
     memory->afterLoad();
 }

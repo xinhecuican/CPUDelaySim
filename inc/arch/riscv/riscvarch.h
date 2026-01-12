@@ -9,17 +9,22 @@ namespace cds::arch::riscv {
 class RiscvArch : public Arch {
 public:
     bool getStream(uint64_t pc, uint8_t pred, bool btbv, BTBEntry* btb_entry, FetchStream* stream) override;
-    void translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, bool& exception) override;
-    int decode(uint64_t paddr, DecodeInfo* info) override;
+    void translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, uint64_t& exception) override;
+    void handleException(uint64_t exception, uint64_t paddr, DecodeInfo* info) override;
+    int decode(uint64_t vaddr, uint64_t paddr, DecodeInfo* info) override;
     bool paddrRead(uint64_t paddr, int size, FETCH_TYPE type, uint8_t* data) override;
     bool paddrWrite(uint64_t paddr, int size, FETCH_TYPE type, uint8_t* data) override;
+    void initConfig(const std::string& config_path) override;
     void afterLoad() override;
     uint64_t updateEnv() override;
     uint64_t getStartPC() override { return 0x80000000; }
+    void irqListener(uint64_t irq) override;
+    void printState() override;
 private:
     void fetch(uint64_t paddr, uint32_t* inst, bool& rvc, uint8_t* size);
     bool checkPermission(PTE& pte, bool ok, uint64_t vaddr, int type);
     void initOps();
+    void updateMMUState();
 private:
     Memory* memory;
     ArchEnv* env;

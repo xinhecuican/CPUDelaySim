@@ -7,6 +7,7 @@
 class EMU {
 public:
     EMU();
+    ~EMU();
     void init(const std::string& config);
     void run();
 

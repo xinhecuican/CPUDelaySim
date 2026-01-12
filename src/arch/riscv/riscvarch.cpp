@@ -3,7 +3,8 @@
 #include "arch/riscv/csrdefines.h"
 #include "common/log.h"
 #include "config.h"
-
+#include "common/emuproxy.h"
+#include <bit>
 namespace cds::arch::riscv {
 
 void RiscvArch::afterLoad() {
@@ -22,20 +23,61 @@ void RiscvArch::afterLoad() {
 #endif
 }
 
-int RiscvArch::decode(uint64_t paddr, DecodeInfo* info) {
+std::map<std::string, size_t> name_offset_map = {
+    {"misa", ARCH_MISA},
+    {"priv", ARCH_PRIV},
+    {"mstatus", ARCH_MSTATUS},
+    {"pmpcfg", ARCH_PMPCFG},
+    {"pmpaddr", ARCH_PMPADDR},
+    {"mideleg", ARCH_MIDELEG},
+    {"medeleg", ARCH_MEDELEG},
+};
+
+void RiscvArch::initConfig(const std::string& config_path) {
+    Arch::initConfig(config_path);
+    for (const auto& cfg : archConfigs) {
+        if (name_offset_map.find(cfg.name) == name_offset_map.end()) {
+            continue;
+        }
+        uint32_t offset = name_offset_map[cfg.name] + cfg.offset;
+        uint64_t* addr = (uint64_t*)((uint8_t*)state + offset);
+        *addr = cfg.value;
+    }
+}
+
+int RiscvArch::decode(uint64_t vaddr, uint64_t paddr, DecodeInfo* info) {
     bool rvc;
     bool decode_valid;
-    int size;
     fetch(paddr, &info->inst, rvc, &info->inst_size);
-    env->pc = paddr;
+    env->pc = vaddr;
+    env->paddr = paddr;
     env->info = info;
     memset(info, 0, DEC_MEMSET_END);
     env->info->exception = EXC_NONE;
+    if (Base::getTick() == 6872752) {
+        Log::info("RiscvArch::decode: paddr hit 0x80669df0");
+    }
     decode_valid = interpreter(env, info->inst, rvc);
     if(unlikely(!decode_valid)) {
-        spdlog::error("RiscvArch::decode: invalid instruction at 0x{:x}", paddr);
+        Log::error("RiscvArch::decode: invalid instruction at 0x{:x}", paddr);
     }
-    return size;
+    bool irq_enable = (state->priv <= MODE_S) && (state->mstatus & MSTATUS_SIE) || 
+                    (state->priv == MODE_M) && (state->mstatus & MSTATUS_MIE) || (state->priv == MODE_U);
+    int64_t irq_enable_mask = -irq_enable;
+    uint32_t irq_valids = state->mip & state->mie & irq_enable_mask;
+    if (irq_valids != 0) {
+        info->exception = 0x80000000 | (std::bit_width(irq_valids) - 1);
+    }
+    return info->inst_size;
+}
+
+void RiscvArch::handleException(uint64_t exception, uint64_t paddr, DecodeInfo* info) {
+    if (exception == EXC_IPF) {
+        env->pc = paddr;
+        env->info = info;
+        info->exc_data = paddr;
+        info->exception = exception;
+    }
 }
 
 bool RiscvArch::getStream(uint64_t pc, uint8_t pred, bool btbv, BTBEntry* btb_entry, FetchStream* stream) {
@@ -64,17 +106,18 @@ inline bool RiscvArch::checkPermission(PTE& pte, bool ok, uint64_t vaddr, int ty
         bool update_ad = !pte.a;
         if (!(ok && pte.x && !pte.pad) || update_ad) {
             return false;
-        } else if (type == FETCH_TYPE::LFETCH) {
-            bool can_load = pte.r || (STATUS_MXR(state->mstatus) && pte.x);
-            bool update_ad = !pte.a;
-            if (!(ok && can_load && !pte.pad) || update_ad) {
-                return false;
-            }
-        } else {
-            bool update_ad = !pte.a || !pte.d;
-            if (!(ok && pte.w && !pte.pad) || update_ad) {
-                return false;
-            }
+        }
+    }
+    else if (type == FETCH_TYPE::LFETCH) {
+        bool can_load = pte.r || (STATUS_MXR(state->mstatus) && pte.x);
+        bool update_ad = !pte.a;
+        if (!(ok && can_load && !pte.pad) || update_ad) {
+            return false;
+        }
+    } else {
+        bool update_ad = !pte.a || !pte.d;
+        if (!(ok && pte.w && !pte.pad) || update_ad) {
+            return false;
         }
     }
     return true;
@@ -96,51 +139,51 @@ inline bool RiscvArch::paddrWrite(uint64_t paddr, int size, FETCH_TYPE type, uin
 
 
 
-void RiscvArch::translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, bool& exception) {
+void RiscvArch::translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, uint64_t& exception) {
+    exception = 0;
     if (type == FETCH_TYPE::IFETCH && !ifetch_mmu_state ||
         type != FETCH_TYPE::IFETCH && !data_mmu_state) {
         paddr = vaddr;
-        exception = false;
         return;
     }
     paddr = (state->satp & 0xfffffffffff) << PGSHFT;
-    int max_level = 3 + ((state->satp >> 60) == 8);
+    int max_level = 3;
     PTE pte;
     int level;
     uint64_t p_pte;
-    for (level = max_level - 1; level >= 0; level--) {
+    for (level = max_level - 1; level >= 0;) {
         p_pte = paddr + VPNi(vaddr, level) * PTE_SIZE;
         if(!paddrRead(p_pte, PTE_SIZE, type, (uint8_t*)(&pte.val))) {
-            exception = true;
+            exception = EXC_IPF;
             return;
         }
         paddr = PGBASE((uint64_t)pte.ppn);
         if (!pte.v || (!pte.r && pte.w) || pte.pad) {
-            exception = true;
+            exception = EXC_IPF;
             return;
         }
         if (pte.r || pte.x) break;
         else {
             if (pte.a || pte.d || pte.u || pte.pbmt || pte.n) {
-                exception = true;
+                exception = EXC_IPF;
                 return;
             }
             level--;
             if (unlikely(level < 0)) {
-                exception = true;
+                exception = EXC_IPF;
                 return;
             }
         }
     }
     if (!checkPermission(pte, true, vaddr, type)) {
-        exception = true;
+        exception = EXC_IPF;
         return;
     }
     
     uint64_t pg_mask = ((1ull << VPNiSHFT(level)) - 1);
     if (level > 0) {
         if ((paddr & pg_mask) != 0) {
-            exception = true;
+            exception = EXC_IPF;
             return;
         }
     }
@@ -153,7 +196,7 @@ inline void RiscvArch::fetch(uint64_t paddr, uint32_t* inst, bool& rvc, uint8_t*
     bool mmio;
     memory->paddrRead(paddr, 4, (uint8_t*)inst, mmio);
     if (unlikely(mmio)) {
-        spdlog::error("RiscvArch::fetch: mmio fetch at 0x{:x}", paddr);
+        Log::error("RiscvArch::fetch: mmio fetch at 0x{:x}", paddr);
     }
     rvc = ((*inst) & 3) != 3;
     int rvc_idx = rvc << 4;
@@ -165,89 +208,210 @@ uint64_t RiscvArch::updateEnv() {
     DecodeInfo* info = env->info;
     ArchState* state = env->state;
     uint64_t exception_idx = info->exception & EXC_MASK;
-    uint64_t exception_mask = (1 << exception_idx) - 1;
+    uint64_t exception_mask = (1 << exception_idx);
     uint64_t irq = (int32_t)info->exception < 0;
-    bool edeleg_valid = ((state->medeleg & exception_mask) != 0) && (state->priv != MODE_M) ||
-                        (irq && (state->mideleg & exception_mask) != 0);
+    bool edeleg_valid = (((irq ? state->mideleg : state->medeleg) & exception_mask) != 0) && (state->priv != MODE_M);
 #ifdef LOG_INST
-    Log::trace("inst", "pc: 0x{:x}, inst: {:8x}", env->pc, info->inst);
+    Log::trace("inst", "pc: {:x}, paddr: {:x}, inst: {:8x}", env->pc, env->paddr, info->inst);
 #endif
-    switch (info->exception) {
-        case EXC_II:
-        case EXC_BP:
-        case EXC_LAM:
-        case EXC_LAF:
-        case EXC_SAM:
-        case EXC_SAF:
-        case EXC_DT:
-        case EXC_SC:
-        case EXC_HE:
-            spdlog::error("exception {} at 0x{:x}", info->exception, env->pc);
-            exit(1);
-        case EXC_IPF:
-        case EXC_LPF:
-        case EXC_SPF:
-            if (edeleg_valid) state->stval = info->exc_data;
-            else state->mtval = info->exc_data;
-        case EXC_ECU:
-        case EXC_ECS:
-        case EXC_ECM:
-            if (edeleg_valid) {
-                state->sepc = env->pc;
-                state->scause = exception_idx | (irq << 63ULL);
-                state->mstatus = (state->mstatus & ~(MSTATUS_SPP | MSTATUS_SPIE | MSTATUS_SIE)) | (state->priv << MSTATUS_SPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_SPIE);
-            } else {
-                state->mepc = env->pc;
-                state->mcause = exception_idx | (irq << 63ULL);
-                state->mstatus = (state->mstatus & ~(MSTATUS_MPP | MSTATUS_MPIE | MSTATUS_MIE)) | (state->priv << MSTATUS_MPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_MPIE);
-            }
-            goto mtvec_out; 
-        case EXC_SRET:
-            state->mstatus = (state->mstatus & ~(MSTATUS_SPP | MSTATUS_SIE | MSTATUS_MPRV)) | ((state->mstatus >> 4) & MSTATUS_SIE) | MSTATUS_SPIE;
-            return state->sepc;
-        case EXC_MRET:
-            state->mstatus = (state->mstatus & ~(MSTATUS_MPP | MSTATUS_MIE)) | ((state->mstatus >> 4) & MSTATUS_MIE) | MSTATUS_MPIE | 
-            ~(MSTATUS_MPRV & ((((state->mstatus >> MSTATUS_MPP_SHIFT) & 0x3ULL) != MODE_M) << MSTATUS_MPRV_SHIFT));
-            return state->mepc;
-        case EXC_NONE:
-            for (int i = 0; i < 3; i++) {
-                    uint64_t* dst_addr = (uint64_t*)(((uint8_t*)state)+info->dst_idx[i]);
-                    *dst_addr = ((*dst_addr) & ~info->dst_mask[i]) | (info->dst_data[i] & info->dst_mask[i]);
-            }
-            ifetch_mmu_state = (state->satp & SATP64_MODE) == 8 && (state->priv != MODE_M);
-            data_mmu_state = (state->satp & SATP64_MODE) == 8 && (((state->mstatus & MSTATUS_MPRV) ? 
-                                                (state->mstatus & MSTATUS_MPP) : state->priv) != MODE_M);
-            switch(info->type) {
-                case DIRECT:
-                case INDIRECT:
-                case IND_CALL:
-                case PUSH:
-                case POP:
-                case POP_PUSH:
+#ifdef DIFFTEST
+    uint64_t mpf_ptr[3];
+    mpf_ptr[0] = info->dst_data[0];
+    mpf_ptr[1] = state->mip;
+    mpf_ptr[2] = 0;
+    NemuProxy::getInstance().mpfcpy((void*)mpf_ptr, DUT_TO_REF);
+    if (info->type == SC && info->dst_data[0] != 0) {
+        struct SyncState sync;
+        sync.lrscValid = 0;
+        sync.lrscAddr = 0;
+        NemuProxy::getInstance().uarchstatus_cpy((uint64_t*)&sync, DUT_TO_REF); // sync lr/sc microarchitectural regs
+    }
+    // if (info->exception == EXC_IPF || info->exception == EXC_LPF || info->exception == EXC_SPF) {
+    //     struct ExecutionGuide guide;
+    //     guide.force_raise_exception = true;
+    //     guide.exception_num = info->exception;
+    //     guide.mtval = info->exc_data;
+    //     guide.stval = info->exc_data;
+    //     guide.force_set_jump_target = false;
+    //     NemuProxy::getInstance().guided_exec(&guide);
+    // } else {
+    if (irq) {
+        NemuProxy::getInstance().raise_intr(exception_idx | (1ULL << 63ULL));
+    } else {
+        NemuProxy::getInstance().exec(1);
+    }
+    // }
+    arch_core_state_t ref;
+    NemuProxy::getInstance().regcpy((void*)&ref, REF_TO_DUT);
+    if (NemuProxy::getInstance().pc != env->pc) {
+        Log::error("RiscvArch::updateEnv: pc mismatch, ref: 0x{:x}, dut: 0x{:x}", NemuProxy::getInstance().pc, env->pc);
+        exit(1);
+    }
+    NemuProxy::getInstance().pc = ref.csrs.this_pc;
+    uint64_t dut_mstatus;
+#endif
+    if(unlikely(irq)) {
+        if (edeleg_valid) state->stval = 0;
+        else state->mtval = 0;
+        goto xtval_end;
+    } else {
+        switch (info->exception) {
+            case EXC_DT:
+            case EXC_SC:
+            case EXC_HE:
+                Log::error("exception {} at 0x{:x}", info->exception, env->pc);
+                exit(1);
+            case EXC_II:
+            case EXC_LAM:
+            case EXC_LAF:
+            case EXC_SAM:
+            case EXC_SAF:
+            case EXC_IPF:
+            case EXC_LPF:
+            case EXC_SPF:
+                if (edeleg_valid) state->stval = info->exc_data;
+                else state->mtval = info->exc_data;
+                goto xtval_end;
+            case EXC_ECU:
+            case EXC_ECS:
+            case EXC_ECM:
+            case EXC_BP:
+                if (edeleg_valid) state->stval = 0;
+                else state->mtval = 0;
+xtval_end:;
+                if (edeleg_valid) {
+                    state->sepc = env->pc;
+                    state->scause = exception_idx | (irq << 63ULL);
+                    state->mstatus = (state->mstatus & ~(MSTATUS_SPP | MSTATUS_SPIE | MSTATUS_SIE)) | (state->priv << MSTATUS_SPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_SPIE);
+                    state->priv = MODE_S;
+                } else {
+                    state->mepc = env->pc;
+                    state->mcause = exception_idx | (irq << 63ULL);
+                    state->mstatus = (state->mstatus & ~(MSTATUS_MPP | MSTATUS_MPIE | MSTATUS_MIE)) | (state->priv << MSTATUS_MPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_MPIE);
+                    state->priv = MODE_M;
+                }
+                goto mtvec_out; 
+            case EXC_SRET:
+                state->priv = (state->mstatus >> MSTATUS_SPP_SHIFT) & 0x3;
+                state->mstatus = (state->mstatus & ~(MSTATUS_SPP | MSTATUS_SIE | MSTATUS_MPRV)) | ((state->mstatus >> 4) & MSTATUS_SIE) | MSTATUS_SPIE;
+                updateMMUState();
+                return state->sepc;
+            case EXC_MRET:
+                state->priv = (state->mstatus >> MSTATUS_MPP_SHIFT) & 0x3;
+                state->mstatus = (state->mstatus & ~(MSTATUS_MPP | MSTATUS_MIE |
+                (((state->priv != MODE_M) << MSTATUS_MPRV_SHIFT)))) | ((state->mstatus >> 4) & MSTATUS_MIE) | MSTATUS_MPIE;
+                updateMMUState();
+                return state->mepc;
+            case EXC_NONE:
+                for (int i = 0; i < 3; i++) {
+                        uint64_t* dst_addr = (uint64_t*)(((uint8_t*)state)+info->dst_idx[i]);
+                        *dst_addr = ((*dst_addr) & ~info->dst_mask[i]) | (info->dst_data[i] & info->dst_mask[i]);
+                }
+                switch (info->type) {
+                    case AMO:
+                    case STORE:
+                        paddrWrite(info->dst_data[2], info->dst_idx[2], FETCH_TYPE::SFETCH, (uint8_t*)&info->dst_data[1]);
+                        break;
+                    case SC:
+                        if (!info->dst_data[0]) {
+                            uint64_t ha;
+                            uint64_t exception;
+                            translateAddr(info->exc_data, FETCH_TYPE::SFETCH, ha, exception);
+                            paddrWrite(ha, info->dst_idx[2], FETCH_TYPE::SFETCH, (uint8_t*)&info->dst_data[2]);
+                        }
+                        break;
+                }
+                state->gpr[0] = 0;
+                updateMMUState();
+#ifdef DIFFTEST
+                dut_mstatus = (state->mstatus & (MSTATUS_MASK | MSTATUS64_SXL | MSTATUS64_UXL)) | 
+        ((uint64_t)((state->mstatus & MSTATUS_FS) == MSTATUS_FS) << MSTATUS64_SD);
+                if (ref.csrs.mstatus != dut_mstatus) {
+                    Log::error("RiscvArch::updateEnv: mstatus mismatch, ref: 0x{:x}, dut: 0x{:x}", ref.csrs.mstatus, dut_mstatus);
+                    exit(1);
+                }
+                for (int i = 0; i < 32; i++) {
+                    if (state->gpr[i] != ref.regs.gpr[i]) {
+                        Log::error("RiscvArch::updateEnv: reg gpr[{}] mismatch, ref: 0x{:x}, dut: 0x{:x}", i, ref.regs.gpr[i], state->gpr[i]);
+                        exit(1);
+                    }
+                }
+#endif
+                switch(info->type) {
+                    case DIRECT:
+                    case INDIRECT:
+                    case IND_CALL:
+                    case PUSH:
+                    case POP:
+                    case POP_PUSH:
 #ifdef LOG_PC
-                    Log::trace("pc", "0x{:x}", info->dst_data[2]);
+                        Log::trace("pc", "0x{:x}", info->dst_data[2]);
 #endif
-                    return info->dst_data[2];
-                case COND:
+                        return info->dst_data[2];
+                    case COND:
 #ifdef LOG_PC
-                    if (info->dst_data[1]) Log::trace("pc", "0x{:x}", info->dst_data[2]);
+                        if (info->dst_data[1]) Log::trace("pc", "0x{:x}", info->dst_data[2]);
 #endif
-                    if (info->dst_data[1]) return info->dst_data[2];
-                    else return env->pc + info->inst_size;
-                default: return env->pc + info->inst_size;
-            }
-        default: 
-            spdlog::error("RiscvArch::updateEnv: unknown exception {} at 0x{:x}", info->exception, env->pc);
-            exit(1);
+                        if (info->dst_data[1]) return info->dst_data[2];
+                        else return env->pc + info->inst_size;
+                    default: return env->pc + info->inst_size;
+                }
+            default: 
+                Log::error("RiscvArch::updateEnv: unknown exception {} at 0x{:x}", info->exception, env->pc);
+                exit(1);
+        }
     }
 
 mtvec_out:;
-    uint64_t mtvec_mode = irq && (state->mtvec & 3);
-    if (mtvec_mode == 0) {
-        return state->mtvec;
-    } else {
-        return (state->mtvec & 0xfffffffffffffffc) + ((state->mcause & 0x1f) << 2);
+    updateMMUState();
+    bool mtvec_mode = irq && (state->mtvec & 3);
+    uint64_t mtvec_base = state->mtvec & 0xfffffffffffffffc;
+    uint64_t mtvec_addr = mtvec_mode ? mtvec_base + ((state->mcause & 0x1f) << 2) : mtvec_base;
+    bool stvec_mode = irq && (state->stvec & 3);
+    uint64_t stvec_base = state->stvec & 0xfffffffffffffffc;
+    uint64_t stvec_addr = stvec_mode ? stvec_base + ((state->scause & 0x1f) << 2) : stvec_base;
+    if (edeleg_valid) {
+        return stvec_addr;
+    } else  {
+        return mtvec_addr;
     }
+}
+
+void RiscvArch::updateMMUState() {
+    ifetch_mmu_state = (state->satp >> 60) == 8 && (state->priv != MODE_M);
+    data_mmu_state = (state->satp >> 60) == 8 && (((state->mstatus & MSTATUS_MPRV) ? 
+                                        (state->mstatus & MSTATUS_MPP) >> MSTATUS_MPP_SHIFT : state->priv) != MODE_M);
+}
+
+void RiscvArch::irqListener(uint64_t irq) {
+    state->mip = irq;
+}
+
+void RiscvArch::printState() {
+    Log::info("*******************************************************************************");
+    
+    const char* reg_name[32] = {
+        "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+        "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+        "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+        "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+    };
+    
+    for (int i = 0; i < 32; i += 4) {
+        Log::info("{}(x{:d}): 0x{:016x} {}(x{:d}): 0x{:016x} {}(x{:d}): 0x{:016x} {}(x{:d}): 0x{:016x}", reg_name[i], i, state->gpr[i], reg_name[i+1], i+1, state->gpr[i+1], reg_name[i+2], i+2, state->gpr[i+2], reg_name[i+3], i+3, state->gpr[i+3]);
+    }
+    
+    Log::info("pc: 0x{:016x}", env->pc);
+    Log::info("paddr: 0x{:016x}", env->paddr);
+    Log::info("priv: 0x{:016x}", state->priv);
+    Log::info("mstatus: 0x{:016x},    mie: 0x{:016x},    mip: 0x{:016x}", state->mstatus, state->mie, state->mip);
+    Log::info("mtvec: 0x{:016x},    mepc: 0x{:016x},    mcause: 0x{:016x}", state->mtvec, state->mepc, state->mcause);
+    Log::info("mtval: 0x{:016x},     satp: 0x{:016x},     misa: 0x{:016x}", state->mtval, state->satp, state->misa);
+    Log::info("mideleg: 0x{:016x},  medeleg: 0x{:016x},  mhartid: 0x{:08x}", state->mideleg, state->medeleg, state->mhartid);
+    Log::info("stvec: 0x{:016x},    sepc: 0x{:016x},    scause: 0x{:016x}", state->stvec, state->sepc, state->scause);
+    Log::info("stval: 0x{:016x},     sie: 0x{:016x}", state->stval, state->sie);
+    Log::info("badaddr: 0x{:016x}", state->badaddr);
+    Log::info("*******************************************************************************");
 }
 
 constexpr uint64_t delegable_ints = S_MODE_INTERRUPTS;
@@ -372,6 +536,10 @@ csrr_func_def(cycle) {
     *val = get_ticks(ctx);
 }
 
+csrr_func_def(noop) {
+    *val = 0;
+}
+
 csrw_func_def(mhpmcounter) {
     assert(0);
 }
@@ -397,7 +565,7 @@ csrr_func_def(mhartid) {
 }
 
 csrr_func_def(mstatus) {
-    *val = (ctx->state->mstatus & MSTATUS_MASK) | 
+    *val = (ctx->state->mstatus & (MSTATUS_MASK | MSTATUS64_UXL | MSTATUS64_SXL)) | 
             ((uint64_t)((ctx->state->mstatus & MSTATUS_FS) == MSTATUS_FS) << MSTATUS64_SD);
 }
 
@@ -529,7 +697,7 @@ csrw_func_def(senvcfg) {
 }
 
 csrr_func_def(sstatus) {
-    *val = (ctx->state->mstatus & SSTATUS_MASK) | 
+    *val = (ctx->state->mstatus & (SSTATUS_MASK | MSTATUS64_UXL)) | 
            ((uint64_t)((ctx->state->mstatus & MSTATUS_FS) == MSTATUS_FS) << MSTATUS64_SD);
 }
 
@@ -540,14 +708,7 @@ csrw_func_def(sstatus) {
 }
 
 csrrmw_func_def(sie) {
-    uint64_t nalias_mask = (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS) &
-        (~ctx->state->mideleg);
-    uint64_t alias_mask = (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS) & ctx->state->mideleg;
-    uint64_t sie_mask = wr_mask & nalias_mask;
-    if (ret_val) *ret_val = ctx->state->sie & alias_mask;
-    ctx->info->dst_idx[1] = ARCH_SIE;
-    ctx->info->dst_mask[1] = all_ints & wr_mask & nalias_mask;
-    ctx->info->dst_data[1] = new_val;
+    rmw_mie(ctx, csrno, ret_val, new_val, wr_mask & ctx->state->mideleg & (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS));
 }
 
 csrr_func_def(stvec) {
@@ -610,11 +771,7 @@ csrw_func_def(stval) {
 }
 
 csrrmw_func_def(sip) {
-    uint64_t mask = (ctx->state->mideleg) & sip_writable_mask;
-    if (ret_val) *ret_val = ctx->state->mip & ctx->state->mideleg & (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS);
-    ctx->info->dst_idx[1] = ARCH_MIP;
-    ctx->info->dst_mask[1] = wr_mask & mask;
-    ctx->info->dst_data[1] = new_val;
+    rmw_mip(ctx, csrno, ret_val, new_val, wr_mask & ctx->state->mideleg & (LOCAL_INTERRUPTS | S_MODE_INTERRUPTS));
 }
 
 csrr_func_def(satp) {
@@ -622,9 +779,12 @@ csrr_func_def(satp) {
 }
 
 csrw_func_def(satp) {
-    ctx->info->dst_idx[1] = ARCH_SATP;
-    ctx->info->dst_mask[1] = 0xffffffffffffffff;
-    ctx->info->dst_data[1] = val;
+    uint64_t mode = val >> 60;
+    if (mode == 0 || mode == 8) {
+        ctx->info->dst_idx[1] = ARCH_SATP;
+        ctx->info->dst_mask[1] = 0x800fffffffffffff;
+        ctx->info->dst_data[1] = val;
+    }
 }
 
 csrr_func_def(pmpcfg) {
@@ -655,16 +815,18 @@ csrr_func_def(pmpaddr) {
 csrw_func_def(pmpaddr) {
     uint32_t reg_index = csrno - CSR_PMPADDR0;
     ctx->info->dst_idx[1] = ARCH_PMPADDR + (reg_index << 3);
-    ctx->info->dst_mask[1] = 0xffffffffffffffff;
+    ctx->info->dst_mask[1] = 0xfffffffffffffc00;
     ctx->info->dst_data[1] = val;
 }
+
+csrw_func_def(noop) {}
 
 csrr_func_def(mcountinhibit) {
     *val = ctx->state->mcountinhibit;
 }
 
 csrw_func_def(mcountinhibit) {
-    ctx->info->exception = EXC_II;
+    // ctx->info->exception = EXC_II;
 }
 
 riscv_csr_operations csr_ops[CSR_TABLE_SIZE];
@@ -760,6 +922,13 @@ void RiscvArch::initOps() {
 
     csr_ops[CSR_MCOUNTINHIBIT]  = { "mcountinhibit",  any, read_mcountinhibit,
                              write_mcountinhibit};
+
+    for (int i = 0; i < 29; i++) {
+        csr_ops[CSR_HPMCOUNTER3+i] = { "hpmcounter", any, read_noop,
+                                 write_noop  };
+        csr_ops[CSR_MHPMCOUNTER3+i] = { "mhpmcounter", any, read_noop,
+                                 write_noop  };
+    }
 }
 
 }

@@ -1,6 +1,9 @@
 #include "common/common.h"
 #include "arch/riscv/trans.h"
 #include "arch/riscv/csrdefines.h"
+#include "common/log.h"
+#include <stdio.h>
+
 namespace cds::arch::riscv {
 
 static int ex_plus_1(DisasContext *ctx, int nf)
@@ -56,9 +59,9 @@ typedef int64_t TCGv;
 typedef int32_t TCGv_i32;
 typedef int64_t TCGv_i64;
 # define INT64_MIN		(-__INT64_C(9223372036854775807)-1)
-#define __NOT_IMPLEMENTED__ do {spdlog::error("LA_EMU NOT IMPLEMENTED %s\n", __func__); return false;} while(0);
-#define __NOT_CORRECTED_IMPLEMENTED__ do {spdlog::warn("LA_EMU NOT CORRECTED IMPLEMENTED %s\n", __func__);} while(0);
-#define __NOT_IMPLEMENTED_EXIT__ do {spdlog::error("LA_EMU NOT IMPLEMENTED %s\n", __func__); exit(1); return false;} while(0);
+#define __NOT_IMPLEMENTED__ do {printf("LA_EMU NOT IMPLEMENTED %s\n", __func__); return false;} while(0);
+#define __NOT_CORRECTED_IMPLEMENTED__ do {printf("LA_EMU NOT CORRECTED IMPLEMENTED %s\n", __func__);} while(0);
+#define __NOT_IMPLEMENTED_EXIT__ do {printf("LA_EMU NOT IMPLEMENTED %s\n", __func__); exit(1); return false;} while(0);
 
 static int64_t get_gpr_32(DisasContext *ctx, int reg_num, DisasExtend ext) {
     switch (ext) {
@@ -127,11 +130,10 @@ static uint64_t gen_pc_plus_diff(DisasContext* ctx, uint64_t diff) {
 
 static int8_t ld_b(DisasContext* ctx, uint64_t va) {
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
     if (unlikely(exception)) {
         ctx->info->exception = EXC_LPF;
-        ctx->info->exc_data = va;
         return 0;
     }
     uint8_t data;
@@ -140,100 +142,118 @@ static int8_t ld_b(DisasContext* ctx, uint64_t va) {
 }
 
 static int16_t ld_h(DisasContext* ctx, uint64_t va) {
-    if (unlikely(va & 0x1)) goto bad;
+    if (unlikely(va & 0x1)) {
+        ctx->info->exception = EXC_LAM;
+        return 0;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_LPF;
+        return 0;
+    }
     uint16_t data;
     ctx->arch->paddrRead(ha, 2, FETCH_TYPE::LFETCH, (uint8_t*)&data);
     return data;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
-    return 0;
 }
 
 static int32_t ld_w(DisasContext* ctx, uint64_t va) {
-    if (unlikely(va & 0x3)) goto bad;
+    if (unlikely(va & 0x3)) {
+        ctx->info->exception = EXC_LAM;
+        return 0;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_LPF;
+        return 0;
+    }
     uint32_t data;
     ctx->arch->paddrRead(ha, 4, FETCH_TYPE::LFETCH, (uint8_t*)&data);
     return data;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
-    return 0;
 }
 
 static int64_t ld_d(DisasContext* ctx, uint64_t va) {
-    if (unlikely(va & 0x7)) goto bad;
+    if (unlikely(va & 0x7)) {
+        ctx->info->exception = EXC_LAM;
+        return 0;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_LPF;
+        return 0;
+    }
     uint64_t data;
     ctx->arch->paddrRead(ha, 8, FETCH_TYPE::LFETCH, (uint8_t*)&data);
     return data;
-
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
-    return 0;
 }
 
-static void st_b(DisasContext* ctx, uint64_t va, int8_t data) {
+static bool st_b(DisasContext* ctx, uint64_t va, int8_t data) {
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
-    ctx->arch->paddrWrite(ha, 1, FETCH_TYPE::SFETCH, (uint8_t*)&data);
-    return;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_SPF;
+        return false;
+    }
+    ctx->info->dst_idx[2] = 1;
+    ctx->info->dst_data[2] = ha;
+    return true;
 }
 
-static void st_h(DisasContext* ctx, uint64_t va, int16_t data) {
-    if (unlikely(va & 0x1)) goto bad;
+static bool st_h(DisasContext* ctx, uint64_t va, int16_t data) {
+    if (unlikely(va & 0x1)) {
+        ctx->info->exception = EXC_SAM;
+        return false;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
-    ctx->arch->paddrWrite(ha, 2, FETCH_TYPE::SFETCH, (uint8_t*)&data);
-    return;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_SPF;
+        return false;
+    }
+    ctx->info->dst_idx[2] = 2;
+    ctx->info->dst_data[2] = ha;
+    return true;
 }
 
-static void st_w(DisasContext* ctx, uint64_t va, int32_t data) {
-    if (unlikely(va & 0x3)) goto bad;
+static bool st_w(DisasContext* ctx, uint64_t va, int32_t data) {
+    if (unlikely(va & 0x3)) {
+        ctx->info->exception = EXC_SAM;
+        return false;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
-    ctx->arch->paddrWrite(ha, 4, FETCH_TYPE::SFETCH, (uint8_t*)&data);
-    return;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_SPF;
+        return false;
+    }
+    ctx->info->dst_idx[2] = 4;
+    ctx->info->dst_data[2] = ha;
+    return true;
 }
 
-static void st_d(DisasContext* ctx, uint64_t va, int64_t data) {
-    if (unlikely(va & 0x7)) goto bad;
+static bool st_d(DisasContext* ctx, uint64_t va, int64_t data) {
+    if (unlikely(va & 0x7)) {
+        ctx->info->exception = EXC_SAM;
+        return false;
+    }
     uint64_t ha;
-    bool exception;
+    uint64_t exception;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) goto bad;
-    ctx->arch->paddrWrite(ha, 8, FETCH_TYPE::SFETCH, (uint8_t*)&data);
-    return;
-bad:;
-    ctx->info->exception = EXC_LAM;
-    ctx->info->exc_data = va;
+    if (unlikely(exception)) {
+        ctx->info->exception = EXC_SPF;
+        return false;
+    }
+    ctx->info->dst_idx[2] = 8;
+    ctx->info->dst_data[2] = ha;
+    return true;
 }
 
 
@@ -271,8 +291,7 @@ bad:;
 #define SET_SRC2_DST_ADDR \
     ctx->info->src_reg[0] = a->rs1; \
     ctx->info->src_reg[1] = a->rs2; \
-    ctx->info->dst_reg = a->rd; \
-    ctx->info->dst_data[2] = addr; 
+    ctx->info->dst_reg = a->rd;
 #define SET_SRC1_DSTF \
     ctx->info->src_reg[0] = a->rs1; \
     ctx->info->dst_reg = a->rd | DSTF_REG_MASK; 
@@ -297,20 +316,16 @@ bad:;
     ctx->info->dst_reg = a->rd | DSTF_REG_MASK;
 #define SET_SRC1_DSTF_ADDR \
     ctx->info->src_reg[0] = a->rs1; \
-    ctx->info->dst_reg = a->rd | DSTF_REG_MASK; \
-    ctx->info->dst_data[2] = addr;
+    ctx->info->dst_reg = a->rd | DSTF_REG_MASK;
 #define SET_SRC1_SRC2F_ADDR \
     ctx->info->src_reg[0] = a->rs1; \
-    ctx->info->src_reg[1] = a->rs2 | DSTF_REG_MASK; \
-    ctx->info->dst_data[2] = addr; 
+    ctx->info->src_reg[1] = a->rs2 | DSTF_REG_MASK;
 #define SET_SRC1_DST_ADDR \
     ctx->info->src_reg[0] = a->rs1; \
-    ctx->info->dst_reg = a->rd; \
-    ctx->info->dst_data[2] = addr; 
+    ctx->info->dst_reg = a->rd;
 #define SET_SRC1_SRC2_ADDR \
     ctx->info->src_reg[0] = a->rs1; \
-    ctx->info->src_reg[1] = a->rs2; \
-    ctx->info->dst_data[2] = addr; 
+    ctx->info->src_reg[1] = a->rs2;
 
 
 static bool trans_addd(DisasContext *ctx, arg_addd *a) {__NOT_IMPLEMENTED_EXIT__}
@@ -482,9 +497,12 @@ static bool trans_amoadd_b(DisasContext *ctx, arg_amoadd_b *a) {__NOT_IMPLEMENTE
 static bool trans_amoadd_h(DisasContext *ctx, arg_amoadd_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amoadd_w(DisasContext *ctx, arg_amoadd_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, dest + data);
+    uint32_t res = dest + data;
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -492,9 +510,12 @@ static bool trans_amoadd_w(DisasContext *ctx, arg_amoadd_w *a) {
 }
 static bool trans_amoadd_d(DisasContext *ctx, arg_amoadd_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, dest + data);
+    uint64_t res = dest + data;
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -504,9 +525,12 @@ static bool trans_amoand_b(DisasContext *ctx, arg_amoand_b *a) {__NOT_IMPLEMENTE
 static bool trans_amoand_h(DisasContext *ctx, arg_amoand_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amoand_w(DisasContext *ctx, arg_amoand_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, dest & data);
+    uint32_t res = dest & data;
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -514,9 +538,12 @@ static bool trans_amoand_w(DisasContext *ctx, arg_amoand_w *a) {
 }
 static bool trans_amoand_d(DisasContext *ctx, arg_amoand_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, dest & data);
+    uint64_t res = dest & data;
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -526,9 +553,12 @@ static bool trans_amoor_b(DisasContext *ctx, arg_amoor_b *a) {__NOT_IMPLEMENTED_
 static bool trans_amoor_h(DisasContext *ctx, arg_amoor_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amoor_w(DisasContext *ctx, arg_amoor_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, dest | data);
+    uint32_t res = dest | data;
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -536,9 +566,12 @@ static bool trans_amoor_w(DisasContext *ctx, arg_amoor_w *a) {
 }
 static bool trans_amoor_d(DisasContext *ctx, arg_amoor_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, dest | data);
+    uint64_t res = dest | data;
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -548,9 +581,12 @@ static bool trans_amoxor_b(DisasContext *ctx, arg_amoxor_b *a) {__NOT_IMPLEMENTE
 static bool trans_amoxor_h(DisasContext *ctx, arg_amoxor_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amoxor_w(DisasContext *ctx, arg_amoxor_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, dest ^ data);
+    uint32_t res = dest ^ data;
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -558,9 +594,12 @@ static bool trans_amoxor_w(DisasContext *ctx, arg_amoxor_w *a) {
 }
 static bool trans_amoxor_d(DisasContext *ctx, arg_amoxor_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, dest ^ data);
+    uint64_t res = dest ^ data;
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -575,9 +614,12 @@ static bool trans_amomax_b(DisasContext *ctx, arg_amomax_b *a) {__NOT_IMPLEMENTE
 static bool trans_amomax_h(DisasContext *ctx, arg_amomax_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amomax_w(DisasContext *ctx, arg_amomax_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, std::max((int32_t)dest, (int32_t)data));
+    uint32_t res = std::max((int32_t)dest, (int32_t)data);
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -585,9 +627,12 @@ static bool trans_amomax_w(DisasContext *ctx, arg_amomax_w *a) {
 }
 static bool trans_amomax_d(DisasContext *ctx, arg_amomax_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, std::max((int64_t)dest, (int64_t)data));
+    uint64_t res = std::max((int64_t)dest, (int64_t)data);
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -597,9 +642,12 @@ static bool trans_amomaxu_b(DisasContext *ctx, arg_amomaxu_b *a) {__NOT_IMPLEMEN
 static bool trans_amomaxu_h(DisasContext *ctx, arg_amomaxu_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amomaxu_w(DisasContext *ctx, arg_amomaxu_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, std::max((uint32_t)dest, (uint32_t)data));
+    uint32_t res = std::max((uint32_t)dest, (uint32_t)data);
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -607,9 +655,12 @@ static bool trans_amomaxu_w(DisasContext *ctx, arg_amomaxu_w *a) {
 }
 static bool trans_amomaxu_d(DisasContext *ctx, arg_amomaxu_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, std::max((uint64_t)dest, (uint64_t)data));
+    uint64_t res = std::max((uint64_t)dest, (uint64_t)data);
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -619,9 +670,12 @@ static bool trans_amomin_b(DisasContext *ctx, arg_amomin_b *a) {__NOT_IMPLEMENTE
 static bool trans_amomin_h(DisasContext *ctx, arg_amomin_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amomin_w(DisasContext *ctx, arg_amomin_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, std::min((int32_t)dest, (int32_t)data));
+    uint32_t res = std::min((int32_t)dest, (int32_t)data);
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -629,9 +683,12 @@ static bool trans_amomin_w(DisasContext *ctx, arg_amomin_w *a) {
 }
 static bool trans_amomin_d(DisasContext *ctx, arg_amomin_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, std::min((int64_t)dest, (int64_t)data));
+    uint64_t res = std::min((int64_t)dest, (int64_t)data);
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -641,9 +698,12 @@ static bool trans_amominu_b(DisasContext *ctx, arg_amominu_b *a) {__NOT_IMPLEMEN
 static bool trans_amominu_h(DisasContext *ctx, arg_amominu_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amominu_w(DisasContext *ctx, arg_amominu_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, std::min((uint32_t)dest, (uint32_t)data));
+    uint32_t res = std::min((uint32_t)dest, (uint32_t)data);
+    st_w(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -651,9 +711,12 @@ static bool trans_amominu_w(DisasContext *ctx, arg_amominu_w *a) {
 }
 static bool trans_amominu_d(DisasContext *ctx, arg_amominu_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, std::min((uint64_t)dest, (uint64_t)data));
+    uint64_t res = std::min((uint64_t)dest, (uint64_t)data);
+    st_d(ctx, addr, res);
+    ctx->info->dst_data[1] = res;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -663,9 +726,11 @@ static bool trans_amoswap_b(DisasContext *ctx, arg_amoswap_b *a) {__NOT_IMPLEMEN
 static bool trans_amoswap_h(DisasContext *ctx, arg_amoswap_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_amoswap_w(DisasContext *ctx, arg_amoswap_w *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_w(ctx, addr);
     uint64_t data = get_gpr_32(ctx, a->rs2, EXT_NONE);
     st_w(ctx, addr, data);
+    ctx->info->dst_data[1] = (uint32_t)data;
     SET_GPR_32
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -673,9 +738,11 @@ static bool trans_amoswap_w(DisasContext *ctx, arg_amoswap_w *a) {
 }
 static bool trans_amoswap_d(DisasContext *ctx, arg_amoswap_d *a) {
     uint64_t addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     uint64_t dest = ld_d(ctx, addr);
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
     st_d(ctx, addr, data);
+    ctx->info->dst_data[1] = data;
     SET_GPR_64
     SET_SRC2_DST_ADDR
     ctx->info->type = AMO;
@@ -815,6 +882,7 @@ static inline bool riscv_csrrw_check(DisasContext *ctx, int csrno, bool write) {
     bool readOnly = (csrno >> 10) == 3;
     if(!csr_ops[csrno].predicate || write && readOnly) {
         ctx->info->exception = EXC_II;
+        ctx->info->exc_data = ctx->info->inst;
         return false;
     }
     return true;
@@ -862,17 +930,17 @@ static void do_csrrw(DisasContext *ctx, int rd, int rc, uint64_t src, uint64_t m
     }
     riscv_csrrw(ctx, csr, &dest, src, mask);
     ctx->info->dst_idx[0] = rd * 8;
-    ctx->info->dst_mask[0] = mask;
+    ctx->info->dst_mask[0] = 0xffffffffffffffff;
     ctx->info->dst_data[0] = dest;
 }
 
 static bool trans_csrrc(DisasContext *ctx, arg_csrrc *a) {
     if (a->rs1 == 0) {
         do_csrr(ctx, a->rd, a->csr);
-        return true;
+    } else {
+        TCGv mask = get_gpr_64(ctx, a->rs1, EXT_NONE);
+        do_csrrw(ctx, a->rd, a->csr, 0, mask);
     }
-    TCGv mask = get_gpr_64(ctx, a->rs1, EXT_NONE);
-    do_csrrw(ctx, a->rd, a->csr, 0, mask);
     SET_SRC1_DST
     ctx->info->type = CSRWR;
     return true;
@@ -880,10 +948,10 @@ static bool trans_csrrc(DisasContext *ctx, arg_csrrc *a) {
 static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a) {
     if (a->rs1 == 0) {
         do_csrr(ctx, a->rd, a->csr);
-        return true;
+    } else {
+        TCGv mask = int64_t(a->rs1);
+        do_csrrw(ctx, a->rd, a->csr, 0, mask);
     }
-    TCGv mask = int64_t(a->rs1);
-    do_csrrw(ctx, a->rd, a->csr, 0, mask);
     SET_SRC0_DST
     ctx->info->type = CSRWR;
     return true;
@@ -891,10 +959,10 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a) {
 static bool trans_csrrs(DisasContext *ctx, arg_csrrs *a) {
     if (a->rs1 == 0) {
         do_csrr(ctx, a->rd, a->csr);
-        return true;
+    } else {
+        TCGv mask = get_gpr_64(ctx, a->rs1, EXT_NONE);
+        do_csrrw(ctx, a->rd, a->csr, 0xffffffffffffffff, mask);
     }
-    TCGv mask = get_gpr_64(ctx, a->rs1, EXT_NONE);
-    do_csrrw(ctx, a->rd, a->csr, 0xffffffffffffffff, mask);
     SET_SRC1_DST
     ctx->info->type = CSRWR;
     return true;
@@ -902,19 +970,15 @@ static bool trans_csrrs(DisasContext *ctx, arg_csrrs *a) {
 static bool trans_csrrsi(DisasContext *ctx, arg_csrrsi *a) {
     if (a->rs1 == 0) {
         do_csrr(ctx, a->rd, a->csr);
-        return true;
+    } else {
+        TCGv mask = int64_t(a->rs1);
+        do_csrrw(ctx, a->rd, a->csr, 0xffffffffffffffff, mask);
     }
-    TCGv mask = int64_t(a->rs1);
-    do_csrrw(ctx, a->rd, a->csr, 0xffffffffffffffff, mask);
     SET_SRC0_DST
     ctx->info->type = CSRWR;
     return true;
 }
 static bool trans_csrrw(DisasContext *ctx, arg_csrrw *a) {
-    if (a->rs1 == 0) {
-        do_csrr(ctx, a->rd, a->csr);
-        return true;
-    }
     TCGv src = get_gpr_64(ctx, a->rs1, EXT_NONE);
     do_csrrw(ctx, a->rd, a->csr, src, 0xffffffffffffffff);
     SET_SRC1_DST
@@ -922,10 +986,6 @@ static bool trans_csrrw(DisasContext *ctx, arg_csrrw *a) {
     return true;
 }
 static bool trans_csrrwi(DisasContext *ctx, arg_csrrwi *a) {
-    if (a->rs1 == 0) {
-        do_csrr(ctx, a->rd, a->csr);
-        return true;
-    }
     TCGv mask = int64_t(a->rs1);
     do_csrrw(ctx, a->rd, a->csr, mask, 0xffffffffffffffff);
     SET_SRC0_DST
@@ -1209,8 +1269,8 @@ static bool trans_fdiv_s(DisasContext *ctx, arg_fdiv_s *a) {
     ctx->info->type = FDIV;
     return true;    
 }
-static bool trans_fence(DisasContext *ctx, arg_fence *a) {return true;}
-static bool trans_fence_i(DisasContext *ctx, arg_fence_i *a) {return true;}
+static bool trans_fence(DisasContext *ctx, arg_fence *a) {ctx->info->type=INT;return true;}
+static bool trans_fence_i(DisasContext *ctx, arg_fence_i *a) {ctx->info->type=INT;return true;}
 static bool trans_feq_d(DisasContext *ctx, arg_feq_d *a) {
     TCGv src1 = get_fpr_64(ctx, a->rs1);
     TCGv src2 = get_fpr_64(ctx, a->rs2);
@@ -1485,69 +1545,69 @@ static bool trans_jalr(DisasContext *ctx, arg_jalr *a) {
     } else if (a->rs1 != 0) {
         ctx->info->type = INDIRECT;
     } else {
-        spdlog::error("jalr with rs1 = 0 is not supported");
+        Log::error("jalr with rs1 = 0 is not supported");
     }
     return true;
 }
 static bool trans_lb(DisasContext *ctx, arg_lb *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_b(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_lbu(DisasContext *ctx, arg_lbu *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (uint8_t)ld_b(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_lh(DisasContext *ctx, arg_lh *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_h(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_lhu(DisasContext *ctx, arg_lhu *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (uint16_t)ld_h(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_lw(DisasContext *ctx, arg_lw *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_w(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_lwu(DisasContext *ctx, arg_lwu *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (uint32_t)ld_w(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
 }
 static bool trans_ld(DisasContext *ctx, arg_ld *a) {
     TCGv addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_d(ctx, addr);
     SET_GPR_64
-    ctx->info->dst_data[2] = addr;
     SET_SRC1_DST_ADDR
     ctx->info->type = LOAD;
     return true;
@@ -1555,6 +1615,7 @@ static bool trans_ld(DisasContext *ctx, arg_ld *a) {
 static bool trans_lpad(DisasContext *ctx, arg_lpad *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_lr_w(DisasContext *ctx, arg_lr_w *a) {
     TCGv addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_w(ctx, addr);
     ctx->info->dst_idx[0] = a->rd * 8;
     ctx->info->dst_mask[0] = 0xffffffffffffffff;
@@ -1571,6 +1632,7 @@ static bool trans_lr_w(DisasContext *ctx, arg_lr_w *a) {
 }
 static bool trans_lr_d(DisasContext *ctx, arg_lr_d *a) {
     TCGv addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     TCGv dest = (int64_t)ld_d(ctx, addr);
     ctx->info->dst_idx[0] = a->rd * 8;
     ctx->info->dst_mask[0] = 0xffffffffffffffff;
@@ -1587,6 +1649,7 @@ static bool trans_lr_d(DisasContext *ctx, arg_lr_d *a) {
 }
 static bool trans_sc_w(DisasContext *ctx, arg_sc_w *a) {
     TCGv addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     TCGv src = get_gpr_64(ctx, a->rs2, EXT_NONE);
     if (addr != ctx->state->load_res || ld_w(ctx, addr) != ctx->state->load_val) {
         ctx->info->dst_idx[0] = a->rd * 8;
@@ -1597,13 +1660,18 @@ static bool trans_sc_w(DisasContext *ctx, arg_sc_w *a) {
         ctx->info->dst_idx[0] = a->rd * 8;
         ctx->info->dst_mask[0] = 0xffffffffffffffff;
         ctx->info->dst_data[0] = 0;
+        ctx->info->dst_data[2] = src;
     }
+    ctx->info->dst_idx[1] = ARCH_LOAD_RES;
+    ctx->info->dst_mask[1] = 0xffffffffffffffff;
+    ctx->info->dst_data[1] = 0xffffffffffffffff;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = SC;
     return true;
 }
 static bool trans_sc_d(DisasContext *ctx, arg_sc_d *a) {
     TCGv addr = get_address(ctx, a->rs1, 0);
+    ctx->info->exc_data = addr;
     TCGv src = get_gpr_64(ctx, a->rs2, EXT_NONE);
     if (addr != ctx->state->load_res || ld_d(ctx, addr) != ctx->state->load_val) {
         ctx->info->dst_idx[0] = a->rd * 8;
@@ -1614,7 +1682,11 @@ static bool trans_sc_d(DisasContext *ctx, arg_sc_d *a) {
         ctx->info->dst_idx[0] = a->rd * 8;
         ctx->info->dst_mask[0] = 0xffffffffffffffff;
         ctx->info->dst_data[0] = 0;
+        ctx->info->dst_data[2] = src;
     }
+    ctx->info->dst_idx[1] = ARCH_LOAD_RES;
+    ctx->info->dst_mask[1] = 0xffffffffffffffff;
+    ctx->info->dst_data[1] = 0xffffffffffffffff;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = SC;
     return true;
@@ -1752,32 +1824,40 @@ static bool trans_remuw(DisasContext *ctx, arg_remuw *a) {
 }
 static bool trans_sb(DisasContext *ctx, arg_sb *a) {
     uint64_t addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_b(ctx, addr, data);
+    bool mem = st_b(ctx, addr, data);
+    ctx->info->dst_data[1] = (uint8_t)data;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = STORE;
     return true;
 }
 static bool trans_sh(DisasContext *ctx, arg_sh *a) {
     uint64_t addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_h(ctx, addr, data);
+    bool mem = st_h(ctx, addr, data);
+    ctx->info->dst_data[1] = (uint16_t)data;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = STORE;
     return true;
 }
 static bool trans_sw(DisasContext *ctx, arg_sw *a) {
     uint64_t addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_w(ctx, addr, data);
+    bool mem = st_w(ctx, addr, data);
+    ctx->info->dst_data[1] = (uint32_t)data;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = STORE;
     return true;
 }
 static bool trans_sd(DisasContext *ctx, arg_sd *a) {
     uint64_t addr = get_address(ctx, a->rs1, a->imm);
+    ctx->info->exc_data = addr;
     uint64_t data = get_gpr_64(ctx, a->rs2, EXT_NONE);
-    st_d(ctx, addr, data);
+    bool mem = st_d(ctx, addr, data);
+    ctx->info->dst_data[1] = data;
     SET_SRC1_SRC2_ADDR
     ctx->info->type = STORE;
     return true;
@@ -1901,11 +1981,13 @@ static bool trans_sspush(DisasContext *ctx, arg_sspush *a) {__NOT_IMPLEMENTED_EX
 static bool trans_ssrdp(DisasContext *ctx, arg_ssrdp *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_unzip(DisasContext *ctx, arg_unzip *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_uret(DisasContext *ctx, arg_uret *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_pause(DisasContext *ctx, arg_pause *a) {return true;}
+static bool trans_pause(DisasContext *ctx, arg_pause *a) {ctx->info->type=INT; return true;}
 static bool trans_sret(DisasContext *ctx, arg_sret *a) {
     if (unlikely(!(ctx->state->priv >= MODE_S))) {
         ctx->info->exception = EXC_II;
         ctx->info->exc_data = ctx->info->inst;
+    } else {
+        ctx->info->exception = EXC_SRET;
     }
     ctx->info->type = SRET;
     return true;
@@ -1914,6 +1996,8 @@ static bool trans_mret(DisasContext *ctx, arg_mret *a) {
     if (unlikely(!(ctx->state->priv >= MODE_M))) {
         ctx->info->exception = EXC_II;
         ctx->info->exc_data = ctx->info->inst;
+    } else {
+        ctx->info->exception = EXC_MRET;
     }
     ctx->info->type = MRET;
     return true;
@@ -1929,7 +2013,7 @@ static bool trans_ebreak(DisasContext *ctx, arg_ebreak *a) {
     return true;
 }
 static bool trans_ecall(DisasContext *ctx, arg_ecall *a) {
-    ctx->info->exception = EXC_ECU;
+    ctx->info->exception = EXC_ECU + ctx->state->priv;
     ctx->info->exc_data = ctx->info->inst;
     ctx->info->type = CSRWR;
     return true;

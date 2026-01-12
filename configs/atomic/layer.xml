@@ -2,6 +2,8 @@
 <root>
   <AtomicCPU/>
   <CacheManager>
-    <Uart container="devices" type="vector"/>
+    <SimpleUart container="devices" type="vector"/>
+    <BasicIrqHandler container="devices" type="vector"/>
+    <Clint container="devices" type="vector"/>
   </CacheManager>
 </root>

@@ -8,7 +8,14 @@ void AtomicCPU::afterLoad() {
 }
 
 void AtomicCPU::exec() {
-    int inst_size = Base::arch->decode(pc, info);
+    uint64_t paddr;
+    uint64_t exception;
+    Base::arch->translateAddr(pc, FETCH_TYPE::IFETCH, paddr, exception);
+    if (exception) {
+        Base::arch->handleException(exception, pc, info);
+    } else {
+        int inst_size = Base::arch->decode(pc, paddr, info);
+    }
     pc = Base::arch->updateEnv();
     Base::upTick();
     inst_count++;

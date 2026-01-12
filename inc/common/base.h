@@ -16,10 +16,11 @@ public:
      * 
      */
     virtual void afterLoad() {}
-    static uint64_t getTick() { return *tick; }
-    static void upTick() { (*tick)++; }
-    static void setTick(uint64_t* tick) { Base::tick = tick; }
-    static void setArch(Arch* arch) { Base::arch = arch; }
+    static inline uint64_t getTick() { return *tick; }
+    static inline void upTick() { (*tick)++; }
+    static inline void setTick(uint64_t* tick) { Base::tick = tick; }
+    static inline void setArch(Arch* arch) { Base::arch = arch; }
+    static inline Arch* getArch() { return arch; }
 
 protected:
     static Arch* arch;

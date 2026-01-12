@@ -27,9 +27,15 @@ class Config {
 public:
     std::string memory_path;
     std::string log_path;
-    static std::string _log_path;
+    std::string arch_path;
     uint64_t end_tick = -1;
     uint64_t inst_count = -1;
+    bool serial_stdio = true;
+    bool log_stdio = true;
+    uint64_t log_start_tick = 0;
+    uint64_t log_end_tick = -1;
+
+    static std::string _log_path;
 
     void setup(const std::string& config_path) {
         std::fstream config_file(config_path, std::ios::in);
@@ -76,6 +82,21 @@ public:
             fs::create_symlink(fs::canonical(fs::path(log_path)), latest_link);
 
             _log_path = log_path;
+        }
+        if (config_map.find("arch_path") != config_map.end()) {
+            arch_path = config_map["arch_path"];
+        }
+        if (config_map.find("serial_stdio") != config_map.end()) {
+            serial_stdio = std::stoi(config_map["serial_stdio"]) != 0;
+        }
+        if (config_map.find("log_stdio") != config_map.end()) {
+            log_stdio = std::stoi(config_map["log_stdio"]) != 0;
+        }
+        if (config_map.find("log_start_tick") != config_map.end()) {
+            log_start_tick = std::stoull(config_map["log_start_tick"]);
+        }
+        if (config_map.find("log_end_tick") != config_map.end()) {
+            log_end_tick = std::stoull(config_map["log_end_tick"]);
         }
     }
 

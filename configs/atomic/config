@@ -1,4 +1,4 @@
 memory_path=payloads/fw_payload_redis.bin
 log_path=logs/atomic
-log_path
-end_tick = 10000
+arch_path=configs/atomic/arch.cfg
+log_start_tick=29000000

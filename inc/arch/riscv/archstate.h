@@ -63,6 +63,7 @@ struct ArchEnv {
     DecodeInfo* info;
     Arch* arch;
     uint64_t pc;
+    uint64_t paddr;
 };
 
 #define DisasContext ArchEnv

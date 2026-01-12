@@ -72,7 +72,6 @@ class Memory(Cache):
     cxx_header = "cache/memory.h"
     size = 0x40000000
     dram_config = "thirdparty/DRAMsim3/configs/xiangshan_DDR4_8Gb_x8_3200_2ch.ini"
-    dram_outpath = "output/"
     dram_queue_size = 32
 
 class CacheManager:
@@ -84,3 +83,16 @@ class Uart:
     baudrate = 115200
     irq_number = 10
     delay = 1
+
+class SimpleUart:
+    cxx_header = "device/simpleuart.h"
+    base_addr = 0x10000000
+
+class BasicIrqHandler:
+    cxx_header = "device/basicirqhandler.h"
+    base_addr = 0xc000000
+    range = 0x4000000
+
+class Clint:
+    cxx_header = "arch/riscv/clint.h"
+    base_addr = 0x2000000

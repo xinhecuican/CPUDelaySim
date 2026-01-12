@@ -417,13 +417,13 @@ namespace cds::arch::riscv {
 #define MSTATUS32_SD        31
 #define MSTATUS64_SD        63
 
-#define MSTATUS_MASK MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_MIE | MSTATUS_MPIE | \
+#define MSTATUS_MASK (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_MIE | MSTATUS_MPIE | \
                      MSTATUS_SPP | MSTATUS_MPRV | MSTATUS_SUM | \
                      MSTATUS_MPP | MSTATUS_MXR | MSTATUS_TVM | MSTATUS_TSR | \
-                     MSTATUS_TW | MSTATUS_FS
-#define SSTATUS_MASK  MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_UIE | MSTATUS_UPIE | \
+                     MSTATUS_TW | MSTATUS_FS)
+#define SSTATUS_MASK  (MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_UIE | MSTATUS_UPIE | \
                      MSTATUS_SPP | MSTATUS_FS | MSTATUS_XS | MSTATUS_SUM | \
-                     MSTATUS_MXR
+                     MSTATUS_MXR)
 /* mip masks */
 #define MIP_SSIP                           (1 << EXCI_SSI)
 #define MIP_MSIP                           (1 << EXCI_MSI)
@@ -464,7 +464,6 @@ namespace cds::arch::riscv {
                          (1ULL << (EXC_LPF)) | \
                          (1ULL << (EXC_SPF)) | \
                          (1ULL << (EXC_DT)) | \
-                         (1ULL << (EXC_SC)) | \
                          (1ULL << (EXC_HE)))
 
 /* Execution environment configuration bits */
