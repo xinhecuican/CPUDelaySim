@@ -18,6 +18,7 @@ public:
     void afterLoad() override;
     uint64_t updateEnv() override;
     uint64_t getStartPC() override { return 0x80000000; }
+    void flushCache(uint8_t id, uint64_t addr, uint32_t asid) override;
     void irqListener(uint64_t irq) override;
     void printState() override;
 private:

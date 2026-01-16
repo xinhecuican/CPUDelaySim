@@ -54,7 +54,7 @@ int RiscvArch::decode(uint64_t vaddr, uint64_t paddr, DecodeInfo* info) {
     env->info = info;
     memset(info, 0, DEC_MEMSET_END);
     env->info->exception = EXC_NONE;
-    if (Base::getTick() == 6872752) {
+    if (paddr == 0x82259586) {
         Log::info("RiscvArch::decode: paddr hit 0x80669df0");
     }
     decode_valid = interpreter(env, info->inst, rvc);
@@ -414,6 +414,16 @@ void RiscvArch::printState() {
     Log::info("*******************************************************************************");
 }
 
+void RiscvArch::flushCache(uint8_t id, uint64_t addr, uint32_t asid) {
+    if (id == 0) {
+        CacheManager::getInstance().getICache()->flush(addr, asid);
+    } else if (id == 1) {
+        CacheManager::getInstance().getDCache()->flush(addr, asid);
+    } else if (id == 2) {
+        // TODO: MMU flush
+    }
+}
+
 constexpr uint64_t delegable_ints = S_MODE_INTERRUPTS;
 constexpr uint64_t all_ints = M_MODE_INTERRUPTS | S_MODE_INTERRUPTS | LOCAL_INTERRUPTS;
 constexpr uint64_t sip_writable_mask = MIP_SSIP | LOCAL_INTERRUPTS;
@@ -472,10 +482,24 @@ static void pmp(DisasContext *ctx, int csrno) {
 #define csrrmw_func_def(name) static void rmw_ ## name(DisasContext *ctx, int csrno, uint64_t *ret_val, uint64_t new_val, uint64_t wr_mask)
 
 csrr_func_def(fflags) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     *val = ctx->state->fp_status.float_exception_flags;
 }
 
 csrw_func_def(fflags) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     uint64_t dest = val & FSR_AEXC;
     ctx->info->dst_idx[1] = ARCH_FFLAGS;
     ctx->info->dst_mask[1] = FSR_AEXC;
@@ -487,10 +511,24 @@ csrw_func_def(fflags) {
 }
 
 csrr_func_def(frm) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     *val = ctx->state->frm;
 }
 
 csrw_func_def(frm) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     uint64_t dest = (val & FSR_RD) >> FSR_RD_SHIFT;
     ctx->info->dst_idx[1] = ARCH_FRM;
     ctx->info->dst_mask[1] = FSR_RD;
@@ -502,10 +540,24 @@ csrw_func_def(frm) {
 }
 
 csrr_func_def(fcsr) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     *val = ctx->state->fp_status.float_exception_flags | (ctx->state->frm << FSR_RD_SHIFT);
 }
 
 csrw_func_def(fcsr) {
+    do {
+        if (!(ctx->state->mstatus & MSTATUS_FS)) {
+            ctx->info->exception = EXC_II;
+            return;
+        }
+        ctx->state->mstatus |= MSTATUS_FS;
+    } while (0);
     // ArchState的布局为
     // uint8_t frm
     // float_status fp_status

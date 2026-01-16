@@ -13,6 +13,7 @@ public:
     bool inRange(uint64_t addr) override;
     void read(uint64_t addr, int size, uint8_t* data) override;
     void write(uint64_t addr, int size, uint8_t* data) override;
+    void setIrq(bool valid);
 private:
     uint64_t base_addr;
     uint32_t baudrate;

@@ -111,7 +111,9 @@ def analyze_layer(filename):
             class_hierarchy[parent_name].append({
                 'name': class_name,
                 'container': container,
-                'type': type_attr
+                'type': type_attr,
+                'id': child.get('id'),
+                'parent': child.get('parent')
             })
             
         # 递归处理子节点
@@ -258,14 +260,28 @@ def main():
                 i = 0
                 for child in layers[name_no_ext]:
                     if child['container'] is not None:
-                        if child['type'] is not None:
+                        if child['type'] == "vector":
                             f.write(f"    {child['name']}* {child['name']}_obj{i} = new {child['name']};\n")
                             f.write(f"    {child['name']}_obj{i}->load();\n")
                             f.write(f"    {child['container']}.push_back({child['name']}_obj{i});\n")
                             i += 1
+                        elif child['type'] == "map":
+                            f.write(f"    {child['name']}* {child['name']}_obj{i} = new {child['name']}();\n")
+                            f.write(f"    {child['name']}_obj{i}->load();\n")
+                            f.write(f"    {child['container']}[{child['id']}] = {child['name']}_obj{i};\n")
+                            i += 1
                         else:
                             f.write(f"    {child['container']} = new {child['name']}();\n")
                             f.write(f"    {child['container']}->load();\n")
+                i = 0
+                for child in layers[name_no_ext]:
+                    if child['type'] == 'vector' or child['type'] == 'map':
+                        if child['parent'] is not None:
+                            f.write(f"    {child['name']}_obj{i}->setParent({child['parent']});\n")
+                        i += 1
+                    else:
+                        if child['parent'] is not None:
+                            f.write(f"    {child['container']}->setParent({child['parent']});\n")
                 layers.pop(name_no_ext)
             f.write("}\n")
 
@@ -282,14 +298,28 @@ def main():
             i = 0
             for child in value:
                 if child['container'] is not None:
-                    if child['type'] is not None:
+                    if child['type'] == "vector":
                         f.write(f"    {child['name']}* {child['name']}_obj{i} = new {child['name']};\n")
                         f.write(f"    {child['name']}_obj{i}->load();\n")
                         f.write(f"    {child['container']}.push_back({child['name']}_obj{i});\n")
                         i += 1
+                    elif child['type'] == "map":
+                        f.write(f"    {child['name']}* {child['name']}_obj{i} = new {child['name']}();\n")
+                        f.write(f"    {child['name']}_obj{i}->load();\n")
+                        f.write(f"    {child['container']}[{child['id']}] = {child['name']}_obj{i};\n")
+                        i += 1
                     else:
                         f.write(f"    {child['container']} = new {child['name']}();\n")
                         f.write(f"    {child['container']}->load();\n")
+            i = 0
+            for child in value:
+                if child['type'] == 'vector' or child['type'] == 'map':
+                    if child['parent'] is not None:
+                        f.write(f"    {child['name']}_obj{i}->setParent({child['parent']});\n")
+                    i += 1
+                else:
+                    if child['parent'] is not None:
+                        f.write(f"    {child['container']}->setParent({child['parent']});\n")
             f.write("}\n")
 
 if __name__ == "__main__":

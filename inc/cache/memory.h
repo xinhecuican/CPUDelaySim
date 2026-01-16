@@ -12,10 +12,10 @@ public:
     ~Memory();
     void load() override;
     void afterLoad() override;
-    void tick();
-    bool lookup(int id, snoop_req_t req, uint64_t addr, uint32_t size) override;
-    bool memoryRead(int id, uint64_t addr, uint32_t size);
-    bool memoryWrite(int id, uint64_t addr, uint32_t size);
+    void tick() override;
+    bool lookup(int callback_id, CacheReq* req) override;
+    bool memoryRead(int callback_id, uint16_t* id, uint64_t addr, uint32_t size);
+    bool memoryWrite(int callback_id, uint16_t* id, uint64_t addr, uint32_t size);
     void paddrRead(uint64_t paddr, uint32_t size, uint8_t *data, bool &mmio);
     void paddrWrite(uint64_t paddr, uint32_t size, uint8_t *data, bool &mmio);
     void setDevices(std::vector<Device *> devices);

@@ -83,12 +83,12 @@ void Memory::afterLoad() {
     fclose(fp);
 }
 
-bool Memory::lookup(int id, snoop_req_t req, uint64_t addr, uint32_t size) {
-    addr &= 0xffffffffff;
-    if (req <= READ_END) {
-        return memoryRead(id, addr, size);
+bool Memory::lookup(int callback_id, CacheReq* req) {
+    req->addr &= 0xffffffffff;
+    if (req->req == READ_SHARED) {
+        return memoryRead(callback_id, req->id, req->addr, req->size);
     } else {
-        return memoryWrite(id, addr, size);
+        return memoryWrite(callback_id, req->id, req->addr, req->size);
     }
 }
 
@@ -98,13 +98,13 @@ void Memory::tick() {
     CoDRAMResponse* rresp = dram->check_read_response();
     if (rresp != NULL) {
         DRAMMeta* meta = (DRAMMeta*)rresp->req->meta;
-        callbacks[0](meta->id, result);
+        callbacks[meta->callback_id](meta->id, result);
         dram_idle_queue.push(const_cast<CoDRAMRequest*>(rresp->req));
     }
     CoDRAMResponse* wresp = dram->check_write_response();
     if (wresp != NULL) {
         DRAMMeta* meta = (DRAMMeta*)wresp->req->meta;
-        callbacks[0](meta->id, result);
+        callbacks[meta->callback_id](meta->id, result);
         dram_idle_queue.push(const_cast<CoDRAMRequest*>(wresp->req));
     }
 #endif
@@ -113,15 +113,16 @@ void Memory::tick() {
     }
 }
 
-bool Memory::memoryRead(int id, uint64_t addr, uint32_t size) {
+bool Memory::memoryRead(int callback_id, uint16_t* id, uint64_t addr, uint32_t size) {
     for (Device* device: devices) {
         if (unlikely(device->inRange(addr))) {
             if (device_idle_queue.empty()) {
                 return false;
             }
             DeviceReq* req = device_idle_queue.front();
-            req->id = id;
-            req->addr = addr;   
+            req->callback_id = callback_id;
+            *(uint64_t*)req->id = *(uint64_t*)id;
+            req->addr = addr;
             req->size = size;
             req->is_write = false;
             bool success = device->addRequest(req);
@@ -137,7 +138,9 @@ bool Memory::memoryRead(int id, uint64_t addr, uint32_t size) {
     }
     CoDRAMRequest* req = dram_idle_queue.front();
     dram_idle_queue.pop();
-    ((DRAMMeta*)req->meta)->id = id;
+    
+    ((DRAMMeta*)req->meta)->callback_id = callback_id;
+    *(uint64_t*)((DRAMMeta*)req->meta)->id = *(uint64_t*)id;
     ((DRAMMeta*)req->meta)->addr = addr;
     ((DRAMMeta*)req->meta)->size = size;
     req->address = addr;
@@ -145,19 +148,20 @@ bool Memory::memoryRead(int id, uint64_t addr, uint32_t size) {
     dram->add_request(req);
     return true;
 #else
-    callbacks[0](id, result);
+    callbacks[callback_id](id, result);
     return true;
 #endif
 }
 
-bool Memory::memoryWrite(int id, uint64_t addr, uint32_t size) {
+bool Memory::memoryWrite(int callback_id, uint16_t* id, uint64_t addr, uint32_t size) {
     for (Device* device: devices) {
         if (unlikely(device->inRange(addr))) {
             if (device_idle_queue.empty()) {
                 return false;
             }
             DeviceReq* req = device_idle_queue.front();
-            req->id = id;
+            req->callback_id = callback_id;
+            *(uint64_t*)req->id = *(uint64_t*)id;
             req->addr = addr;   
             req->size = size;
             req->is_write = true;
@@ -174,7 +178,9 @@ bool Memory::memoryWrite(int id, uint64_t addr, uint32_t size) {
     }
     CoDRAMRequest* req = dram_idle_queue.front();
     dram_idle_queue.pop();
-    ((DRAMMeta*)req->meta)->id = id;
+    
+    ((DRAMMeta*)req->meta)->callback_id = callback_id;
+    *(uint64_t*)((DRAMMeta*)req->meta)->id = *(uint64_t*)id;
     ((DRAMMeta*)req->meta)->addr = addr;
     ((DRAMMeta*)req->meta)->size = size;
     req->address = addr;
@@ -182,7 +188,7 @@ bool Memory::memoryWrite(int id, uint64_t addr, uint32_t size) {
     dram->add_request(req);
     return true;
 #else
-    callbacks[0](id, result);
+    callbacks[callback_id](id, result);
     return true;
 #endif
 }

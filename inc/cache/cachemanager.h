@@ -15,12 +15,16 @@ public:
     void load() override;
     void afterLoad() override;
     IrqHandler* getIrqHandler() { return irq_handler; }
-    std::vector<Cache*> l1_caches;
-    std::vector<Cache*> l2_caches;
-    std::vector<Cache*> l3_caches;
+    Cache* getCache(int id);
+    Cache* getICache();
+    Cache* getDCache();
     Memory* memory;
-    std::vector<Device*> devices;
+    std::vector<Device*> devices;    
+    std::map<int, Cache*> cache_map;
 private:
+    int icache_id;
+    int dcache_id;
+
     CacheManager() = default;
     ~CacheManager() = default;
     IrqHandler* irq_handler = nullptr;

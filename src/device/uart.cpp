@@ -1,10 +1,13 @@
 #include "device/uart.h"
+#include "device/irqhandler.h"
 
 void cpu_irq_handler(void *opaque, int n, int level) {
+    Uart* uart = (Uart*)opaque;
+    uart->setIrq(level);
 }
 
 void Uart::afterLoad() {
-    irq = qemu_allocate_irq(cpu_irq_handler, nullptr, irq_number);
+    irq = qemu_allocate_irq(cpu_irq_handler, this, irq_number);
     serial = simple_serial_init(base_addr, irq, baudrate);
     end_addr = base_addr + 0x1000;
 }
@@ -50,4 +53,8 @@ void Uart::read(uint64_t addr, int size, uint8_t* data) {
 void Uart::write(uint64_t addr, int size, uint8_t* data) {
     uint64_t di = *data;
     serial_ioport_write(serial, addr, di, size);
+}
+
+void Uart::setIrq(bool valid) {
+    irq_handler->setIrqState(irq_number, valid);
 }

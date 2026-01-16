@@ -5,7 +5,8 @@
 struct DeviceReq {
     uint64_t addr;
     uint32_t size;
-    int id;
+    uint8_t callback_id;
+    uint16_t id[4];
     bool is_write;
 };
 

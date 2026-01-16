@@ -7,6 +7,9 @@ class CPU:
 class AtomicCPU(CPU):
     cxx_header = "cpu/atomiccpu.h"
 
+class CacheCPU(CPU):
+    cxx_header = "cpu/cachecpu.h"
+
 # class Frontend:
 #     inst_buffer_size = 16
 #     fetch_width = CPU.fetch_width
@@ -58,8 +61,7 @@ class Cache:
     set_size = 64
     way = 8
     delay = 1
-    level = 0
-    id = 0
+    level = 1
     replace_method = "lru"
 
 class ICache(Cache):
@@ -76,12 +78,14 @@ class Memory(Cache):
 
 class CacheManager:
     cxx_header = "cache/cachemanager.h"
+    icache_id = 0
+    dcache_id = 1
 
 class Uart:
     cxx_header = "device/uart.h"
     base_addr = 0x10000000
     baudrate = 115200
-    irq_number = 10
+    irq_number = 1
     delay = 1
 
 class SimpleUart:

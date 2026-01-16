@@ -9,9 +9,17 @@ add_requires("dramsim3_lib")
 add_requires("softfloat_lib")
 add_includedirs("inc")
 
+option("arch")
+    set_default("riscv")
+    set_showmenu(true)
+    set_values("riscv", "arm", "x86")
 
-local arch = "riscv"
-local config = "atomic"
+option("config")
+    set_default("atomic")
+    set_showmenu(true)
+
+local arch = get_config("arch") or "riscv"
+local config = get_config("config") or "atomic"
 
 package("dramsim3_lib")
     

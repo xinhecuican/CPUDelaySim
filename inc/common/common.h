@@ -49,16 +49,17 @@ enum packed InstType {
     CSRWR = 15,
     SRET = 16,
     MRET = 17,
-    IFENCE = 18,
-    SFENCE = 19,
-    FMISC_SIMPLE = 20,
-    FMISC_COMPLEX = 21,
-    FADD = 22,
-    FMUL = 23,
-    FMA = 24,
-    FDIV = 25,
-    FSQRT = 26,
-    TYPE_NUM = 27
+    FENCE = 18,
+    IFENCE = 19,
+    SFENCE = 20,
+    FMISC_SIMPLE = 21,
+    FMISC_COMPLEX = 22,
+    FADD = 23,
+    FMUL = 24,
+    FMA = 25,
+    FDIV = 26,
+    FSQRT = 27,
+    TYPE_NUM = 28
 };
 
 struct BTBEntry {
@@ -85,7 +86,8 @@ enum packed RedirectReason {
 };
 
 struct DRAMMeta {
-    int id;
+    uint8_t callback_id;
+    uint16_t id[4];
     uint64_t addr;
     uint32_t size;
 };

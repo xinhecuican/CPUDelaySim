@@ -4,24 +4,39 @@
 
 class ICache : public Cache {
 public:
-    bool lookup(int id, snoop_req_t req, uint64_t addr, uint32_t size) override;
-    void setParentCallback() override;
-    void redirect(FetchStream* stream);
+    ~ICache();
+    bool lookup(int callback_id, CacheReq* req) override;
+    void afterLoad() override;
+    void tick() override;
     void load() override;
+    void flush(uint64_t addr, uint32_t asid) override;
 
 private:
-    void callbackFunc(int id, CacheTagv* tagv_i);
+    void callbackFunc(uint16_t* ids, CacheTagv* tagv_i);
 
 private:
+    typedef enum {
+        IDLE,
+        LOOKUP,
+        MISS,
+        REFILL
+    } state_t;
+
     bool lookup_valid = false;
     bool _match = false;
-    int lookup_id;
-    uint32_t lookup_offset;
-    uint32_t lookup_size;
-    uint64_t lookup_addr;
     uint32_t lookup_set;
+    uint64_t lookup_tag;
     int replace_way;
-    snoop_req_t lookup_req;
+    CacheReq* idle_req;
+    CacheReq* lookup_req;
+    bool idle_req_valid;
+    state_t state = IDLE;
+
+    CacheReq req_parent;
+
+    bool flush_valid = false;
+    uint16_t flush_num;
+    uint32_t flush_set;
 };
 
 REGISTER_CLASS(ICache)

@@ -78,6 +78,16 @@ public:
      * @return uint64_t target pc
      */
     virtual uint64_t updateEnv(){return 0;}
+
+    /**
+     * @brief flush cache
+     * 
+     * @param id cache id, 0 is icache, 1 is dcache, 2 is mmu
+     * @param addr cache address
+     * @param asid address space id
+     */
+    virtual void flushCache(uint8_t id, uint64_t addr, uint32_t asid) = 0;
+
     void setTick(uint64_t* tick) { this->tick = tick; }
     uint64_t getTick() { return *tick; }
     void setInstret(uint64_t* instret) { this->instret = instret; }
@@ -86,7 +96,6 @@ public:
     virtual uint64_t getStartPC() = 0;
 
     virtual void printState() {}
-
 
     virtual void initConfig(const std::string& config_path) {
         std::ifstream file(config_path);

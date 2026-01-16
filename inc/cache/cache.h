@@ -3,7 +3,7 @@
 #include "common/base.h"
 #include "cache/replace/replace.h"
 
-enum snoop_req_t {
+enum packed snoop_req_t {
     SNOOP_NONE = 0,
     READ_ONCE = 1,
     READ_SHARED = 2,
@@ -28,28 +28,37 @@ struct CacheTagv {
     bool dirty;
 };
 
-typedef std::function<void(int, CacheTagv*)> cache_callback_t;
+typedef std::function<void(uint16_t*, CacheTagv*)> cache_callback_t;
+
+struct CacheReq {
+    uint8_t callback_id;
+    snoop_req_t req;
+    uint32_t size;
+    uint16_t id[4];
+    uint64_t addr;
+};
+
 
 class Cache : public Base {
 public:
     virtual ~Cache();
     /**
-     * @brief cache lookup
+     * @brief cache lookup, return true if cache receive reqeuest
      * 
      * @param addr address to lookup
      * @param req snoop request type
      * @param size size to lookup
      * @return whether the lookup is successful
      */
-    virtual bool lookup(int id, snoop_req_t req, uint64_t addr, uint32_t size) = 0;
-    virtual void setParentCallback() {}
+    virtual bool lookup(int callback_id, CacheReq* req) = 0;
+    virtual void tick() {}
     virtual void load() override;
     virtual void afterLoad();
+    virtual void flush(uint64_t addr, uint32_t asid){}
     void setParent(Cache* parent);
     void splitAddr(uint64_t addr, uint64_t& tag, uint32_t& set, uint32_t& offset);
     uint32_t getOffset(uint64_t addr);
-    int getId() { return id; }
-    void setCallback(cache_callback_t const & callback);
+    uint8_t setCallback(cache_callback_t const & callback);
     int getLineSize() { return line_size; }
     int getLevel() { return level; }
 
@@ -79,14 +88,9 @@ protected:
     int delay = 1;
     /**
      * @ingroup config
-     * @brief cache level, 0 is the L1 cache
+     * @brief cache level, 1 is the L1 cache
      */
     int level = 0;
-    /**
-     * @ingroup config
-     * @brief cache id
-     */
-    int id = 0;
     /**
      * @ingroup config
      * @brief cache replace method
@@ -95,13 +99,13 @@ protected:
 
     int line_byte = line_size / 8;
     Cache* parent = nullptr;
-    std::map<int, Cache*> children;
     CacheTagv*** tagvs;
     uint32_t tag_offset;
     uint32_t index_offset;
     uint32_t set_mask;
     uint32_t line_mask;
     Replace* replace = nullptr;
+    uint8_t callback_id = 0;
     std::vector<cache_callback_t> callbacks;
 };
 

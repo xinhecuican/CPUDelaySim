@@ -41,7 +41,10 @@ void EMU::init(const std::string& path) {
 
 void EMU::run() {
     while (Base::getTick() <= config.end_tick && arch->getInstret() < config.inst_count) {
-        cpu->exec();
         CacheManager::getInstance().memory->tick();
+        for (auto& cache : CacheManager::getInstance().cache_map) {
+            cache.second->tick();
+        }
+        cpu->exec();
     }
 }

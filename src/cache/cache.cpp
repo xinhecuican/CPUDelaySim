@@ -35,15 +35,13 @@ CacheTagv* Cache::match(uint64_t tag, uint32_t set) {
     return nullptr;
 }
 
-void Cache::setCallback(cache_callback_t const & callback) {
+uint8_t Cache::setCallback(cache_callback_t const & callback) {
+    uint8_t size = callbacks.size();
     callbacks.push_back(callback);
+    return size;
 }
 
 void Cache::afterLoad() {
-    if (replace == nullptr) {
-        Log::error("Replace policy not set");
-        exit(1);
-    }
     if (replace_method == "lru") {
         replace = new LRUReplace();
         replace->setParams(2, set_size, way);
