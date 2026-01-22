@@ -1,0 +1,19 @@
+
+<root>
+  <PipelineCPU>
+    <Predictor container="predictor">
+      <BTB container="bps" type="vector"/>
+      <GShareBP container="bps" type="vector"/>
+      <HistoryManager container="history_manager">
+        <GHR container="histories" type="vector"/>
+      </HistoryManager>
+    </Predictor>
+  </PipelineCPU>
+  <CacheManager>
+    <Uart container="devices" type="vector"/>
+    <BasicIrqHandler container="devices" type="vector"/>
+    <Clint container="devices" type="vector"/>
+    <ICache container="cache_map" type="map" id="0" parent="memory"/>
+    <DCache container="cache_map" type="map" id="1" parent="memory"/>
+  </CacheManager>
+</root>
