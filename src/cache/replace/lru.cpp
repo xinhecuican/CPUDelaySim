@@ -22,4 +22,12 @@ void LRUReplace::setParams(int arg_num, ...) {
     set = va_arg(args, int);
     way = va_arg(args, int);
     va_end(args);
+    
+    lru_list.resize(set);
+    lru_map.resize(set);
+    for (int i = 0; i < set; i++) {
+        for (int j = 0; j < way; j++) {
+            lru_map[i][j] = lru_list[i].insert(lru_list[i].end(), j);
+        }
+    }
 }

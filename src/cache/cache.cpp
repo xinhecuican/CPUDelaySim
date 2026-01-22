@@ -47,10 +47,10 @@ void Cache::afterLoad() {
         replace->setParams(2, set_size, way);
     }
     line_byte = line_size / 8;
-    tag_offset = log2(line_byte) + log2(set_size);
-    index_offset = log2(line_byte);
+    tag_offset = log2(line_size) + log2(set_size);
+    index_offset = log2(line_size);
     set_mask = set_size - 1;
-    line_mask = line_byte - 1;
+    line_mask = line_size - 1;
 
     tagvs = new CacheTagv**[set_size];
     for (int i = 0; i < set_size; i++) {

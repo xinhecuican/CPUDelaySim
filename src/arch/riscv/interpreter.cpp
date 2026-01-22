@@ -135,14 +135,15 @@ static uint64_t gen_pc_plus_diff(DisasContext* ctx, uint64_t diff) {
 
 static int8_t ld_b(DisasContext* ctx, uint64_t va) {
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_LPF;
         return 0;
     }
     uint8_t data;
     ctx->arch->paddrRead(ha, 1, FETCH_TYPE::LFETCH, &data);
+    ctx->info->dst_idx[2] = 1;
     return data;
 }
 
@@ -152,14 +153,15 @@ static int16_t ld_h(DisasContext* ctx, uint64_t va) {
         return 0;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_LPF;
         return 0;
     }
     uint16_t data;
     ctx->arch->paddrRead(ha, 2, FETCH_TYPE::LFETCH, (uint8_t*)&data);
+    ctx->info->dst_idx[2] = 2;
     return data;
 }
 
@@ -169,14 +171,15 @@ static int32_t ld_w(DisasContext* ctx, uint64_t va) {
         return 0;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_LPF;
         return 0;
     }
     uint32_t data;
     ctx->arch->paddrRead(ha, 4, FETCH_TYPE::LFETCH, (uint8_t*)&data);
+    ctx->info->dst_idx[2] = 4;
     return data;
 }
 
@@ -186,22 +189,23 @@ static int64_t ld_d(DisasContext* ctx, uint64_t va) {
         return 0;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::LFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_LPF;
         return 0;
     }
     uint64_t data;
     ctx->arch->paddrRead(ha, 8, FETCH_TYPE::LFETCH, (uint8_t*)&data);
+    ctx->info->dst_idx[2] = 8;
     return data;
 }
 
 static bool st_b(DisasContext* ctx, uint64_t va, int8_t data) {
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_SPF;
         return false;
     }
@@ -216,9 +220,9 @@ static bool st_h(DisasContext* ctx, uint64_t va, int16_t data) {
         return false;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_SPF;
         return false;
     }
@@ -233,9 +237,9 @@ static bool st_w(DisasContext* ctx, uint64_t va, int32_t data) {
         return false;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_SPF;
         return false;
     }
@@ -250,9 +254,9 @@ static bool st_d(DisasContext* ctx, uint64_t va, int64_t data) {
         return false;
     }
     uint64_t ha;
-    uint64_t exception;
+    uint64_t exception = EXC_NONE;
     ctx->arch->translateAddr(va, FETCH_TYPE::SFETCH, ha, exception);
-    if (unlikely(exception)) {
+    if (unlikely(ctx->arch->exceptionValid(exception))) {
         ctx->info->exception = EXC_SPF;
         return false;
     }
@@ -1846,10 +1850,10 @@ static bool trans_jalr(DisasContext *ctx, arg_jalr *a) {
     bool rd_valid = a->rd == 1 || a->rd == 5;
     bool rs1_valid = a->rs1 == 1 || a->rs1 == 5;
     if (rd_valid && rs1_valid) {
-        ctx->info->type = a->rd == a->rs1 ? PUSH : POP_PUSH;
+        ctx->info->type = a->rd == a->rs1 ? IND_PUSH : POP_PUSH;
     } else if (rd_valid) {
         if (a->rs1 != 0) ctx->info->type = IND_CALL;
-        else ctx->info->type = PUSH;
+        else ctx->info->type = IND_PUSH;
     } else if (rs1_valid) {
         ctx->info->type = POP;
     } else if (a->rs1 != 0) {

@@ -84,6 +84,25 @@ def analyze_ast(filename):
                 classes_info.append(classInfo)
     return classes_info
 
+def merge_classes_info(merged_info, classes_info):
+    # 将merged_info转换为以类名为键的字典，方便查找和合并
+    merged_map = {}
+    for cls in merged_info:
+        merged_map[cls['name']] = cls.copy()
+    
+    # 遍历classes_info，合并相同名称的类的attributes
+    for cls in classes_info:
+        cls_name = cls['name']
+        if cls_name in merged_map:
+            # 如果类名已存在，合并attributes，classes_info中的属性覆盖merged_info中的属性
+            merged_map[cls_name]['attributes'].update(cls['attributes'])
+        else:
+            # 如果类名不存在，直接添加到merged_map
+            merged_map[cls_name] = cls.copy()
+    
+    # 将字典转换回列表并返回
+    return list(merged_map.values())
+
 cpuname = 'AtomicCPU'
 
 def analyze_layer(filename):
@@ -122,6 +141,7 @@ def analyze_layer(filename):
     
     for ele in root:
         if 'CPU' in ele.tag:
+            global cpuname
             cpuname = ele.tag
             traverse_xml(ele)
             break
@@ -142,19 +162,20 @@ def main():
     classes_info = []
     if not os.path.exists(obj_dir):
         os.makedirs(obj_dir)
+
+    classes = analyze_ast("configs/params.py")
+    classes_info.extend(classes)
     for file_name in os.listdir(current_dir):
         file_path = os.path.join(current_dir, file_name)
         name_ext = os.path.splitext(file_name)[1]
         if os.path.isfile(file_path) and name_ext == ".py":
             classes = analyze_ast(file_path)
-            classes_info.extend(classes)
+            classes_info = merge_classes_info(classes_info, classes)
     
-    classes = analyze_ast("configs/params.py")
-    classes_info.extend(classes)
 
     # 通过后序遍历将父类的attributes合并到子类
     # 首先构建类名到类信息的映射
-    class_map = {cls['name']: cls for cls in classes}
+    class_map = {cls['name']: cls for cls in classes_info}
     
     # 所有类的attributes字典
     all_attributes = {}
@@ -181,10 +202,10 @@ def main():
         return inherited_attrs
     
     # 对每个类执行后序遍历获取继承属性
-    for cls in classes:
+    for cls in classes_info:
         get_inherited_attributes(cls['name'])
     
-    for cls in classes:
+    for cls in classes_info:
         name_no_ext = cls['name']
         file_h = os.path.join(obj_dir, "params_" + name_no_ext + ".h")
         with open(file_h, 'w') as f:

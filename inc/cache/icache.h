@@ -10,9 +10,11 @@ public:
     void tick() override;
     void load() override;
     void flush(uint64_t addr, uint32_t asid) override;
+    void redirect() override;
 
 private:
     void callbackFunc(uint16_t* ids, CacheTagv* tagv_i);
+    void handleIdleReq();
 
 private:
     typedef enum {
@@ -31,6 +33,8 @@ private:
     CacheReq* lookup_req;
     bool idle_req_valid;
     state_t state = IDLE;
+    bool req_clear_wait = false; 
+    uint16_t current_id = 0;
 
     CacheReq req_parent;
 

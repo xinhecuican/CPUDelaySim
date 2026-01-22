@@ -10,49 +10,41 @@ class AtomicCPU(CPU):
 class CacheCPU(CPU):
     cxx_header = "cpu/cachecpu.h"
 
-# class Frontend:
-#     inst_buffer_size = 16
-#     fetch_width = CPU.fetch_width
-#     retire_size = CPU.retire_size
+class PipelineCPU(CPU):
+    cxx_header = "cpu/pipelinecpu.h"
+    mult_delay = 2
+    div_delay = 14
+    fadd_delay = 2
+    fmul_delay = 2
+    fma_delay = 4
+    fdiv_delay = 19
+    fsqrt_delay = 19
+    fmisc_complex_delay = 1
+    retire_size = 10
 
-# class DRFrontend(Frontend):
-#     cacheid = 0
-#     ibuf_size = 32
-#     block_size = 8
+class Predictor:
+    cxx_header = "pred/predictor.h"
+    retire_size = CPU.retire_size
 
-# class Predictor:
-#     stage = 0
+class GHR:
+    cxx_header = "pred/history/ghr.h"
+    ghr_size = 64
 
-# class FsqPredictor(Predictor):
-#     stream_size = 32
-#     block_size = 8
+class HistoryManager:
+    cxx_header = "pred/history/history.h"
 
-# class GHR:
-#     ghr_size = 64
+class GShareBP:
+    cxx_header = "pred/bp/gshare.h"
+    delay = 0
+    table_size = 1024
+    bit_size = 2
+    offset = 1
 
-# class BTB:
-#     tag_size = 20
-#     target_size = 20
-#     offset = 2
-#     stage = 0
-
-# class BasicBTB(BTB):
-#     table_size = 1024
-
-# class BP:
-#     stage = 0
-
-# class BimodalBP(BP):
-#     table_size = 1024
-#     bits = 2
-
-# class Backend:
-#     fetch_width = CPU.fetch_width
-#     retire_size = CPU.retire_size
-
-# class PRFRename:
-#     preg_size = 128
-#     vreg_size = 32
+class BTB:
+    cxx_header = "pred/bp/btb.h"
+    table_size = 256
+    tag_size = 20
+    offset = 1
 
 
 class Cache:

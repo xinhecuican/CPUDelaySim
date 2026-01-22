@@ -3,9 +3,8 @@
 
 CacheCPU::~CacheCPU() {
     delete req;
+    delete info;
 }
-
-
 
 void CacheCPU::afterLoad() {
     info = new DecodeInfo();
@@ -15,7 +14,6 @@ void CacheCPU::afterLoad() {
     icache = CacheManager::getInstance().getICache();
     icache->setCallback(std::bind(&CacheCPU::icacheCallback, this, std::placeholders::_1, std::placeholders::_2));
     req = new CacheReq();
-    req->callback_id = 0;
     req->req = READ_SHARED;
     req->size = 4;
 }

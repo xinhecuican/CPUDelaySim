@@ -23,5 +23,7 @@ protected:
     CacheReq* req = nullptr;
 };
 
+REGISTER_CLASS(CacheCPU)
+
 
 #endif

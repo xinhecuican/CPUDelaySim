@@ -54,9 +54,6 @@ int RiscvArch::decode(uint64_t vaddr, uint64_t paddr, DecodeInfo* info) {
     env->info = info;
     memset(info, 0, DEC_MEMSET_END);
     env->info->exception = EXC_NONE;
-    if (paddr == 0x82259586) {
-        Log::info("RiscvArch::decode: paddr hit 0x80669df0");
-    }
     decode_valid = interpreter(env, info->inst, rvc);
     if(unlikely(!decode_valid)) {
         Log::error("RiscvArch::decode: invalid instruction at 0x{:x}", paddr);
@@ -66,7 +63,7 @@ int RiscvArch::decode(uint64_t vaddr, uint64_t paddr, DecodeInfo* info) {
     int64_t irq_enable_mask = -irq_enable;
     uint32_t irq_valids = state->mip & state->mie & irq_enable_mask;
     if (irq_valids != 0) {
-        info->exception = 0x80000000 | (std::bit_width(irq_valids) - 1);
+        info->exception = IRQ_MASK | (std::bit_width(irq_valids) - 1);
     }
     return info->inst_size;
 }
@@ -78,10 +75,6 @@ void RiscvArch::handleException(uint64_t exception, uint64_t paddr, DecodeInfo* 
         info->exc_data = paddr;
         info->exception = exception;
     }
-}
-
-bool RiscvArch::getStream(uint64_t pc, uint8_t pred, bool btbv, BTBEntry* btb_entry, FetchStream* stream) {
-    return true;
 }
 
 // csr
@@ -140,7 +133,6 @@ inline bool RiscvArch::paddrWrite(uint64_t paddr, int size, FETCH_TYPE type, uin
 
 
 void RiscvArch::translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, uint64_t& exception) {
-    exception = 0;
     if (type == FETCH_TYPE::IFETCH && !ifetch_mmu_state ||
         type != FETCH_TYPE::IFETCH && !data_mmu_state) {
         paddr = vaddr;
@@ -151,39 +143,45 @@ void RiscvArch::translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, 
     PTE pte;
     int level;
     uint64_t p_pte;
+    uint64_t exc_pf;
+    switch (type) {
+        case FETCH_TYPE::IFETCH: exc_pf = EXC_IPF; break;
+        case FETCH_TYPE::LFETCH: exc_pf = EXC_LPF; break;
+        case FETCH_TYPE::SFETCH: exc_pf = EXC_SPF; break;
+    }
     for (level = max_level - 1; level >= 0;) {
         p_pte = paddr + VPNi(vaddr, level) * PTE_SIZE;
         if(!paddrRead(p_pte, PTE_SIZE, type, (uint8_t*)(&pte.val))) {
-            exception = EXC_IPF;
+            exception = exc_pf;
             return;
         }
         paddr = PGBASE((uint64_t)pte.ppn);
         if (!pte.v || (!pte.r && pte.w) || pte.pad) {
-            exception = EXC_IPF;
+            exception = exc_pf;
             return;
         }
         if (pte.r || pte.x) break;
         else {
             if (pte.a || pte.d || pte.u || pte.pbmt || pte.n) {
-                exception = EXC_IPF;
+                exception = exc_pf;
                 return;
             }
             level--;
             if (unlikely(level < 0)) {
-                exception = EXC_IPF;
+                exception = exc_pf;
                 return;
             }
         }
     }
     if (!checkPermission(pte, true, vaddr, type)) {
-        exception = EXC_IPF;
+        exception = exc_pf;
         return;
     }
     
     uint64_t pg_mask = ((1ull << VPNiSHFT(level)) - 1);
     if (level > 0) {
         if ((paddr & pg_mask) != 0) {
-            exception = EXC_IPF;
+            exception = exc_pf;
             return;
         }
     }
@@ -209,7 +207,7 @@ uint64_t RiscvArch::updateEnv() {
     ArchState* state = env->state;
     uint64_t exception_idx = info->exception & EXC_MASK;
     uint64_t exception_mask = (1 << exception_idx);
-    uint64_t irq = (int32_t)info->exception < 0;
+    uint64_t irq = (int64_t)info->exception < 0;
     bool edeleg_valid = (((irq ? state->mideleg : state->medeleg) & exception_mask) != 0) && (state->priv != MODE_M);
 #ifdef LOG_INST
     Log::trace("inst", "pc: {:x}, paddr: {:x}, inst: {:8x}", env->pc, env->paddr, info->inst);
@@ -236,7 +234,7 @@ uint64_t RiscvArch::updateEnv() {
     //     NemuProxy::getInstance().guided_exec(&guide);
     // } else {
     if (irq) {
-        NemuProxy::getInstance().raise_intr(exception_idx | (1ULL << 63ULL));
+        NemuProxy::getInstance().raise_intr(info->exception);
     } else {
         NemuProxy::getInstance().exec(1);
     }
@@ -281,12 +279,12 @@ uint64_t RiscvArch::updateEnv() {
 xtval_end:;
                 if (edeleg_valid) {
                     state->sepc = env->pc;
-                    state->scause = exception_idx | (irq << 63ULL);
+                    state->scause = info->exception;
                     state->mstatus = (state->mstatus & ~(MSTATUS_SPP | MSTATUS_SPIE | MSTATUS_SIE)) | (state->priv << MSTATUS_SPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_SPIE);
                     state->priv = MODE_S;
                 } else {
                     state->mepc = env->pc;
-                    state->mcause = exception_idx | (irq << 63ULL);
+                    state->mcause = info->exception;
                     state->mstatus = (state->mstatus & ~(MSTATUS_MPP | MSTATUS_MPIE | MSTATUS_MIE)) | (state->priv << MSTATUS_MPP_SHIFT) | ((state->mstatus << 4) & MSTATUS_MPIE);
                     state->priv = MODE_M;
                 }
@@ -315,7 +313,7 @@ xtval_end:;
                     case SC:
                         if (!info->dst_data[0]) {
                             uint64_t ha;
-                            uint64_t exception;
+                            uint64_t exception = EXC_NONE;
                             translateAddr(info->exc_data, FETCH_TYPE::SFETCH, ha, exception);
                             paddrWrite(ha, info->dst_idx[2], FETCH_TYPE::SFETCH, (uint8_t*)&info->dst_data[2]);
                         }
@@ -341,10 +339,11 @@ xtval_end:;
                     case DIRECT:
                     case INDIRECT:
                     case IND_CALL:
+                    case IND_PUSH:
                     case PUSH:
                     case POP:
                     case POP_PUSH:
-#ifdef LOG_PC
+#ifdef LOG_PCf
                         Log::trace("pc", "0x{:x}", info->dst_data[2]);
 #endif
                         return info->dst_data[2];
@@ -422,6 +421,14 @@ void RiscvArch::flushCache(uint8_t id, uint64_t addr, uint32_t asid) {
     } else if (id == 2) {
         // TODO: MMU flush
     }
+}
+
+bool RiscvArch::exceptionValid(uint64_t exception) {
+    return exception != EXC_NONE;
+}
+
+bool RiscvArch::needFlush(DecodeInfo* info) {
+    return info->type == CSRWR && info->dst_idx[1] == ARCH_SATP && info->dst_mask[1] != 0;
 }
 
 constexpr uint64_t delegable_ints = S_MODE_INTERRUPTS;

@@ -1,6 +1,6 @@
 
 <root>
-  <AtomicCPU/>
+  <CacheCPU/>
   <CacheManager>
     <Uart container="devices" type="vector"/>
     <BasicIrqHandler container="devices" type="vector"/>

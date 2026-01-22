@@ -28,7 +28,7 @@ void Clint::tick() {
 }
 
 bool Clint::addRequest(DeviceReq* req) {
-    if (req != nullptr) {
+    if (this->req != nullptr) {
         return false;
     }
     this->req = req;

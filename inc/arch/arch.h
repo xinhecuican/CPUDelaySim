@@ -17,7 +17,6 @@ enum FETCH_TYPE {
 class Arch {
 public:
     virtual ~Arch() {}
-    virtual bool getStream(uint64_t pc, uint8_t pred, bool btbv, BTBEntry* btb_entry, FetchStream* stream) = 0;
     /**
      * @brief translate virtual address to physical address
      * 
@@ -96,6 +95,10 @@ public:
     virtual uint64_t getStartPC() = 0;
 
     virtual void printState() {}
+
+    virtual bool exceptionValid(uint64_t exception) {return false;}
+    virtual uint64_t getExceptionNone() {return 0;}
+    virtual bool needFlush(DecodeInfo* info) { return false; }
 
     virtual void initConfig(const std::string& config_path) {
         std::ifstream file(config_path);

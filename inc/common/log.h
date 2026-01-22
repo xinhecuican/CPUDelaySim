@@ -16,6 +16,7 @@ public:
     static uint64_t start_tick;
     static uint64_t end_tick;
     static void initStdio(bool serial_stdio, bool log_stdio, const std::string& log_path) {
+        spdlog::init_thread_pool(65536, 2);
         std::shared_ptr<spdlog::logger> std_logger;
         if (log_stdio) {
             std_logger = spdlog::stdout_color_mt("stdio");

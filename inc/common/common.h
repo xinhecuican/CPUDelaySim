@@ -31,41 +31,38 @@ enum RetType {
 enum packed InstType {
     INT = 0,
     BRANCH_START = 1,
-    DIRECT = 1,
-    COND = 2,
-    INDIRECT = 3,
-    IND_CALL = 4,
-    PUSH = 5,
-    POP = 6,
-    POP_PUSH = 7,
-    BRANCH_END = 7,
-    LOAD = 8,
-    STORE = 9,
-    LR = 10,
-    SC = 11,
-    AMO = 12,
-    MULT = 13,
-    DIV = 14,
-    CSRWR = 15,
-    SRET = 16,
-    MRET = 17,
-    FENCE = 18,
-    IFENCE = 19,
-    SFENCE = 20,
-    FMISC_SIMPLE = 21,
-    FMISC_COMPLEX = 22,
-    FADD = 23,
-    FMUL = 24,
-    FMA = 25,
-    FDIV = 26,
-    FSQRT = 27,
-    TYPE_NUM = 28
-};
-
-struct BTBEntry {
-    uint64_t tag;
-    uint64_t target;
-    InstType type;
+    COND = 1,
+    DIRECT = 2,
+    PUSH = 3,
+    INDIRECT = 4,
+    IND_CALL = 5,
+    IND_PUSH = 6,
+    POP = 7,
+    POP_PUSH = 8,
+    BRANCH_END = 8,
+    MEM_START = 9,
+    LOAD = 9,
+    STORE = 10,
+    LR = 11,
+    SC = 12,
+    AMO = 13,
+    MEM_END = 13,
+    MULT = 14,
+    DIV = 15,
+    CSRWR = 16,
+    SRET = 17,
+    MRET = 18,
+    FENCE = 19,
+    IFENCE = 20,
+    SFENCE = 21,
+    FMISC_SIMPLE = 22,
+    FMISC_COMPLEX = 23,
+    FADD = 24,
+    FMUL = 25,
+    FMA = 26,
+    FDIV = 27,
+    FSQRT = 28,
+    TYPE_NUM = 29
 };
 
 struct FetchStream {
@@ -93,8 +90,8 @@ struct DRAMMeta {
 };
 
 #define DSTF_REG_MASK 0x20
-#define IRQ_MASK 0x80000000
-#define EXC_MASK 0x7FFFFFFF
+#define IRQ_MASK 0x8000000000000000
+#define EXC_MASK 0x7FFFFFFFFFFFFFFF
 
 struct FetchInfo {
     uint64_t pc;
@@ -106,7 +103,7 @@ struct DecodeInfo {
     uint64_t dst_mask[3];
     uint8_t src_reg[3];
     uint8_t dst_reg; // 解码出的目的寄存器
-    uint32_t exception;
+    uint64_t exception;
     uint32_t inst;
     uint64_t exc_data;
     uint64_t dst_data[3];
@@ -138,6 +135,13 @@ static constexpr size_t DEC_MEMSET_END = offsetof(DecodeInfo, inst);
 
 static int clog2(int x) {
     return std::ceil(std::log2(x));
+}
+
+static int updateCounter(int old, bool taken, uint32_t mask, int min) {
+    unsigned int offset = static_cast<unsigned int>(old - min);
+    int taken_val = (taken << 1) - 1;
+    offset = (offset + taken_val) & mask;
+    return static_cast<int>(offset) + min;
 }
 
 #endif // COMMON_BUNDLES_H_

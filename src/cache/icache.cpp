@@ -3,9 +3,9 @@
 void ICache::afterLoad() {
     callback_id = parent->setCallback(std::bind(&ICache::callbackFunc, this, std::placeholders::_1, std::placeholders::_2));
     lookup_req = new CacheReq;
-    lookup_req->callback_id = callback_id;
     lookup_req->id[1] = 0;
     lookup_req->size = line_size;
+    lookup_req->req = READ_SHARED;
     Cache::afterLoad();
 }
 
@@ -36,31 +36,27 @@ void ICache::tick() {
         switch(state) {
             case IDLE: {
                 if (idle_req_valid) {
-                    lookup_req->addr = idle_req->addr;
-                    lookup_req->id[0] = idle_req->id[0];
+                    handleIdleReq();
                     state = LOOKUP;
-                    idle_req_valid = false;
                 }
                 break;
             }
             case LOOKUP: {
-                uint64_t tag;
-                uint32_t set, offset;
-                splitAddr(lookup_req->addr, tag, set, offset);
-                CacheTagv* tagv = match(tag, set);
-                _match = tagv != nullptr;
+                if (_match) {
+                    callbacks[0](lookup_req->id, nullptr);
+                }
                 if (!_match) {
-                    bool success = parent->lookup(callback_id, lookup_req);
-                    if (success) {
-                        lookup_set = set;
-                        lookup_tag = lookup_req->addr >> tag_offset;
-                        replace_way = replace->get(set);
-                        state = MISS;
+                    lookup_req->id[1] = current_id;
+                    if (!req_clear_wait) {
+                        bool success = parent->lookup(callback_id, lookup_req);
+                        if (success) {
+                            replace_way = replace->get(lookup_set);
+                            state = MISS;
+                            current_id++;
+                        }
                     }
                 } else if (idle_req_valid) {
-                    lookup_req->addr = idle_req->addr;
-                    lookup_req->id[0] = idle_req->id[0];
-                    idle_req_valid = false;
+                    handleIdleReq();
                 } else {
                     state = IDLE;
                 }
@@ -79,12 +75,15 @@ void ICache::tick() {
 }
 
 void ICache::callbackFunc(uint16_t* ids, CacheTagv* tagv_i) {
-    assert(state == MISS);
     CacheTagv* tagv = tagvs[lookup_set][replace_way];
     tagv->tag = lookup_tag;
     tagv->valid = true; 
-    callbacks[0](lookup_req->id, nullptr);
-    state = REFILL;
+    if (req_clear_wait) {
+        req_clear_wait = false;
+    } else {
+        callbacks[0](lookup_req->id, nullptr);
+        state = REFILL;
+    }
 }
 
 
@@ -92,4 +91,22 @@ void ICache::flush(uint64_t addr, uint32_t asid) {
     flush_set = 0;
     flush_num = set_size;
     flush_valid = true;
+}
+
+void ICache::redirect() {
+    idle_req_valid = false;
+    if (state == MISS || state == REFILL) {
+        req_clear_wait = true;
+    }
+    state = IDLE;
+}
+
+void ICache::handleIdleReq() {
+    lookup_req->addr = idle_req->addr;
+    lookup_req->id[0] = idle_req->id[0];
+    idle_req_valid = false;
+    uint32_t offset;
+    splitAddr(lookup_req->addr, lookup_tag, lookup_set, offset);
+    CacheTagv* tagv = match(lookup_tag, lookup_set);
+    _match = tagv != nullptr;
 }

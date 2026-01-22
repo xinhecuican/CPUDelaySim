@@ -5,6 +5,7 @@
 
 class AtomicCPU : public CPU {
 public:
+    ~AtomicCPU();
     void load() override;
     void afterLoad() override;
     void exec() override;

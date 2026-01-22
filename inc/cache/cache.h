@@ -31,7 +31,6 @@ struct CacheTagv {
 typedef std::function<void(uint16_t*, CacheTagv*)> cache_callback_t;
 
 struct CacheReq {
-    uint8_t callback_id;
     snoop_req_t req;
     uint32_t size;
     uint16_t id[4];
@@ -54,7 +53,17 @@ public:
     virtual void tick() {}
     virtual void load() override;
     virtual void afterLoad();
+    /**
+     * @brief flush cache
+     * 
+     * @param addr address to flush
+     * @param asid cache id
+     */
     virtual void flush(uint64_t addr, uint32_t asid){}
+    /**
+     * @brief remove current cache access, reset state
+     */
+    virtual void redirect() {}
     void setParent(Cache* parent);
     void splitAddr(uint64_t addr, uint64_t& tag, uint32_t& set, uint32_t& offset);
     uint32_t getOffset(uint64_t addr);

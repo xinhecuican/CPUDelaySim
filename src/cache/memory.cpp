@@ -110,6 +110,11 @@ void Memory::tick() {
 #endif
     for (auto device : devices) {
         device->tick();
+        DeviceReq* resp = device->checkResponse();
+        if (resp != nullptr) {
+            callbacks[resp->callback_id](resp->id, result);
+            device_idle_queue.push(resp);
+        }
     }
 }
 
