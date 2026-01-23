@@ -1,7 +1,18 @@
 #include "cache/dcache.h"
 
 void DCache::afterLoad() {
-    callback_id = parent->setCallback(std::bind(&DCache::callbackFunc, this, std::placeholders::_1, std::placeholders::_2));
+    callback_id = parent->setCallback([this](uint16_t* ids, CacheTagv* tagv_i) {
+        CacheTagv* tagv = this->tagvs[this->lookup_set][this->replace_way];
+        tagv->tag = this->lookup_tag;
+        tagv->valid = true;
+        tagv->dirty = this->lookup_req->req == WRITE_BACK;
+        if (this->req_clear_wait) {
+            this->req_clear_wait = false;
+        } else {
+            this->callbacks[0](this->lookup_req->id, nullptr);
+            this->state = REFILL;
+        }
+    });
     lookup_req = new CacheReq;
     lookup_req->id[1] = 0;
     lookup_req->size = line_size;
@@ -37,9 +48,6 @@ void DCache::tick() {
                 break;
             }
             case LOOKUP: {
-                if (_match) {
-                    callbacks[0](lookup_req->id, nullptr);
-                }
                 if (!_match) {
                     if (!req_clear_wait) {
                         bool success = parent->lookup(callback_id, lookup_req);
@@ -88,19 +96,6 @@ void DCache::redirect() {
     state = IDLE;
 }
 
-void DCache::callbackFunc(uint16_t* ids, CacheTagv* tagv_i) {
-    CacheTagv* tagv = tagvs[lookup_set][replace_way];
-    tagv->tag = lookup_tag;
-    tagv->valid = true;
-    tagv->dirty = lookup_req->req == WRITE_BACK;
-    if (req_clear_wait) {
-        req_clear_wait = false;
-    } else {
-        callbacks[0](lookup_req->id, nullptr);
-        state = REFILL;
-    }
-}
-
 void DCache::handleIdleReq() {
     lookup_req->addr = idle_req->addr;
     lookup_req->id[0] = idle_req->id[0];
@@ -110,4 +105,7 @@ void DCache::handleIdleReq() {
     splitAddr(lookup_req->addr, lookup_tag, lookup_set, offset);
     lookup_tagv = match(lookup_tag, lookup_set);
     _match = lookup_tagv != nullptr;
+    if (_match) {
+        callbacks[0](lookup_req->id, nullptr);
+    }
 }

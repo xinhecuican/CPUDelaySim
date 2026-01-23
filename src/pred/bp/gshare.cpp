@@ -27,9 +27,9 @@ void GShareBP::predict(BranchStream* stream, void* meta) {
     }
 }
 
-void GShareBP::update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta_info) {
+void GShareBP::update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta) {
     if (type == COND) {
-        GShareMeta* meta_info = (GShareMeta*)meta_info;
+        GShareMeta* meta_info = (GShareMeta*)meta;
         uint32_t ghist = meta_info->ghr;
         uint32_t idx = (((pc & table_pc_mask) >> offset) ^ ghist) & table_pc_mask;
         table[idx] = updateCounter(table[idx], real_taken, bit_mask, min_size);

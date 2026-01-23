@@ -97,7 +97,7 @@ public:
     virtual void printState() {}
 
     virtual bool exceptionValid(uint64_t exception) {return false;}
-    virtual uint64_t getExceptionNone() {return 0;}
+    virtual constexpr uint64_t getExceptionNone() {return 0;}
     virtual bool needFlush(DecodeInfo* info) { return false; }
 
     virtual void initConfig(const std::string& config_path) {

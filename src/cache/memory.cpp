@@ -21,7 +21,11 @@ Memory::~Memory() {
         delete req;
     }
 #endif
-
+#ifdef RAMULATOR
+    ramulator_frontend->finalize();
+    ramulator_memory->finalize();
+    
+#endif
     while (!device_idle_queue.empty()) {
         DeviceReq* req = device_idle_queue.front();
         device_idle_queue.pop();
@@ -55,6 +59,18 @@ void Memory::afterLoad() {
     }
     dram_outpath = Config::getLogFilePath("");
     dram = new ComplexCoDRAMsim3(dram_config, dram_outpath);
+#endif
+#ifdef RAMULATOR
+    YAML::Node config = Ramulator::Config::parse_config_file(dram_config, {});
+    ramulator_frontend = Ramulator::Factory::create_frontend(config);
+    ramulator_memory = Ramulator::Factory::create_memory_system(config);
+    ramulator_frontend->connect_memory_system(ramulator_memory);
+    ramulator_memory->connect_frontend(ramulator_frontend);
+    for (int i = 0; i < dram_queue_size; i++) {
+        DRAMMeta* meta = new DRAMMeta;
+        dram_read_queue.push(meta);
+        DRAMMeta* meta_write = new DRAMMeta;
+    }
 #endif
 
     for (auto device : devices) {
@@ -108,6 +124,13 @@ void Memory::tick() {
         dram_idle_queue.push(const_cast<CoDRAMRequest*>(wresp->req));
     }
 #endif
+#ifdef RAMULATOR
+    ramulator_memory->tick();
+    if (write_valid) {
+        write_valid = false;
+        callbacks[write_callback_id](write_ids, result);
+    }
+#endif
     for (auto device : devices) {
         device->tick();
         DeviceReq* resp = device->checkResponse();
@@ -152,6 +175,20 @@ bool Memory::memoryRead(int callback_id, uint16_t* id, uint64_t addr, uint32_t s
     req->is_write = false;
     dram->add_request(req);
     return true;
+#elif RAMULATOR
+    Ramulator::Request req(addr, Ramulator::Request::Type::Read);
+    req.source_id = 0;
+    req.callback = [this](Ramulator::Request& req) {
+        DRAMMeta* meta = this->dram_read_queue.pop();
+        this->callbacks[meta->callback_id](meta->id, this->result);
+    };
+    bool success = ramulator_memory->send(req);
+    if (success) {
+        DRAMMeta* meta = dram_read_queue.next();
+        meta->callback_id = callback_id;
+        *(uint64_t*)meta->id = *(uint64_t*)id;
+    }
+    return success;
 #else
     callbacks[callback_id](id, result);
     return true;
@@ -192,6 +229,16 @@ bool Memory::memoryWrite(int callback_id, uint16_t* id, uint64_t addr, uint32_t 
     req->is_write = true;
     dram->add_request(req);
     return true;
+#elif RAMULATOR
+    Ramulator::Request req(addr, Ramulator::Request::Type::Write);
+    req.source_id = 1;
+    bool success = ramulator_memory->send(req);
+    if (success) {
+        write_ids = id;
+        write_valid = true;
+        write_callback_id = callback_id;
+    }
+    return success;
 #else
     callbacks[callback_id](id, result);
     return true;

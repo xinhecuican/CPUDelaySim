@@ -16,7 +16,7 @@ public:
     void load() override;
     void afterLoad() override;
     void predict(BranchStream* stream, void* meta) override;
-    void update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta_info) override;
+    void update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta) override;
     int getMetaSize() override;
     
 private:
@@ -33,7 +33,7 @@ private:
     int tag_size;
     int offset;
 
-    BTBEntry* table;
+    BTBEntry** table;
     int index_size;
     uint64_t tag_mask;
     uint64_t index_mask;

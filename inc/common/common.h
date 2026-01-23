@@ -12,6 +12,7 @@
 #include <functional>
 // #include <json/json.h>
 #include <boost/dynamic_bitset.hpp>
+#include <boost/circular_buffer.hpp>
 #include <spdlog/spdlog.h>
 #include "common/reflect.h"
 #include "common/defines.h"
@@ -138,10 +139,10 @@ static int clog2(int x) {
 }
 
 static int updateCounter(int old, bool taken, uint32_t mask, int min) {
-    unsigned int offset = static_cast<unsigned int>(old - min);
+    uint32_t offset = uint32_t(old - min);
     int taken_val = (taken << 1) - 1;
     offset = (offset + taken_val) & mask;
-    return static_cast<int>(offset) + min;
+    return int(offset) + min;
 }
 
 #endif // COMMON_BUNDLES_H_

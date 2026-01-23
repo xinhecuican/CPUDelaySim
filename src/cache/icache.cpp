@@ -1,7 +1,17 @@
 #include "cache/icache.h"
 
 void ICache::afterLoad() {
-    callback_id = parent->setCallback(std::bind(&ICache::callbackFunc, this, std::placeholders::_1, std::placeholders::_2));
+    callback_id = parent->setCallback([this](uint16_t* ids, CacheTagv* tagv_i) {
+        CacheTagv* tagv = this->tagvs[this->lookup_set][this->replace_way];
+        tagv->tag = this->lookup_tag;
+        tagv->valid = true; 
+        if (this->req_clear_wait) {
+            this->req_clear_wait = false;
+        } else {
+            this->callbacks[0](this->lookup_req->id, nullptr);
+            this->state = REFILL;
+        }
+    });
     lookup_req = new CacheReq;
     lookup_req->id[1] = 0;
     lookup_req->size = line_size;
@@ -42,9 +52,6 @@ void ICache::tick() {
                 break;
             }
             case LOOKUP: {
-                if (_match) {
-                    callbacks[0](lookup_req->id, nullptr);
-                }
                 if (!_match) {
                     lookup_req->id[1] = current_id;
                     if (!req_clear_wait) {
@@ -74,19 +81,6 @@ void ICache::tick() {
     }
 }
 
-void ICache::callbackFunc(uint16_t* ids, CacheTagv* tagv_i) {
-    CacheTagv* tagv = tagvs[lookup_set][replace_way];
-    tagv->tag = lookup_tag;
-    tagv->valid = true; 
-    if (req_clear_wait) {
-        req_clear_wait = false;
-    } else {
-        callbacks[0](lookup_req->id, nullptr);
-        state = REFILL;
-    }
-}
-
-
 void ICache::flush(uint64_t addr, uint32_t asid) {
     flush_set = 0;
     flush_num = set_size;
@@ -109,4 +103,7 @@ void ICache::handleIdleReq() {
     splitAddr(lookup_req->addr, lookup_tag, lookup_set, offset);
     CacheTagv* tagv = match(lookup_tag, lookup_set);
     _match = tagv != nullptr;
+    if (_match) {
+        callbacks[0](lookup_req->id, nullptr);
+    }
 }

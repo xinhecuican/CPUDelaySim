@@ -4,7 +4,15 @@
 #ifdef DRAMSIM
 #include "cosimulation.h"
 #endif
+#ifdef RAMULATOR
+#include "base/base.h"
+#include "base/request.h"
+#include "base/config.h"
+#include "frontend/frontend.h"
+#include "memory_system/memory_system.h"
+#endif
 #include "device/device.h"
+#include "common/linklist.h"
 
 class Memory : public Cache {
 public:
@@ -54,11 +62,21 @@ private:
      * @brief DRAM 队列大小
      */
     int dram_queue_size;
-    ComplexCoDRAMsim3 *dram;
-    std::queue<CoDRAMRequest *> dram_idle_queue;
 
     std::vector<Device *> devices;
     std::queue<DeviceReq *> device_idle_queue;
+#ifdef DRAMSIM
+    ComplexCoDRAMsim3 *dram;
+    std::queue<CoDRAMRequest *> dram_idle_queue;
+#endif
+#ifdef RAMULATOR
+    Ramulator::IFrontEnd* ramulator_frontend;
+    Ramulator::IMemorySystem* ramulator_memory;
+    LinkList<DRAMMeta> dram_read_queue;
+    uint16_t* write_ids;
+    int write_callback_id;
+    bool write_valid = false;
+#endif
 };
 
 #endif

@@ -6,7 +6,7 @@
 
 namespace cds::arch::riscv {
 
-class RiscvArch : public Arch {
+class RiscvArch final : public Arch {
 public:
     void translateAddr(uint64_t vaddr, FETCH_TYPE type, uint64_t& paddr, uint64_t& exception) override;
     void handleException(uint64_t exception, uint64_t paddr, DecodeInfo* info) override;
@@ -19,7 +19,7 @@ public:
     uint64_t getStartPC() override { return 0x80000000; }
     void flushCache(uint8_t id, uint64_t addr, uint32_t asid) override;
     bool exceptionValid(uint64_t exception) override;
-    uint64_t getExceptionNone() override { return EXC_NONE; }
+    constexpr uint64_t getExceptionNone() override { return EXC_NONE; }
     bool needFlush(DecodeInfo* info) override;
     void irqListener(uint64_t irq) override;
     void printState() override;

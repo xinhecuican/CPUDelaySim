@@ -65,7 +65,7 @@ class DCache(Cache):
 class Memory(Cache):
     cxx_header = "cache/memory.h"
     size = 0x40000000
-    dram_config = "thirdparty/DRAMsim3/configs/xiangshan_DDR4_8Gb_x8_3200_2ch.ini"
+    dram_config = "configs/ramulator.yaml"
     dram_queue_size = 32
 
 class CacheManager:

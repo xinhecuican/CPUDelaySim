@@ -2,10 +2,14 @@ add_rules("mode.debug", "mode.release", "mode.profile")
 -- add_rules("c++.unity_build")
 set_languages("c++20")
 
+includes("scripts/dramsim3")
+includes("scripts/ramulator2")
+
 add_requires("yaml-cpp")
 add_requires("boost")
 add_requires("spdlog")
 add_requires("dramsim3_lib")
+add_requires("ramulator2_lib")
 add_requires("softfloat_lib")
 add_includedirs("inc")
 
@@ -18,56 +22,19 @@ option("config")
     set_default("atomic")
     set_showmenu(true)
 
+option("ram_sim")
+    set_default("ramulator2")
+    set_showmenu(true)
+    set_values("ramulator2", "dramsim3")
+
+rule("mode.relWithDebInfo")
+    after_load(function (target)
+        target:set("symbols", "debug")
+        target:set("optimize", "faster")
+    end)
+
 local arch = get_config("arch") or "riscv"
 local config = get_config("config") or "atomic"
-
-package("dramsim3_lib")
-    
-    on_load(function (package)
-        local dramsim3_dir = path.join(os.curdir(), "thirdparty/DRAMsim3")
-        local build_dir = path.join(dramsim3_dir, "build")
-        package:set("dramsim3_dir", dramsim3_dir)
-        package:set("build_dir", build_dir)
-        
-        -- 确保 thirdparty 目录存在
-        if not os.isdir("thirdparty") then
-            os.mkdir("thirdparty")
-        end
-        -- 如果 DRAMsim3 不存在，克隆它
-        if not os.isdir(dramsim3_dir) then
-            print("Cloning DRAMsim3...")
-            local result = os.exec("git clone https://github.com/OpenXiangShan/DRAMsim3.git %s", dramsim3_dir)
-            if not result then
-                error("Failed to clone DRAMsim3")
-            end
-            os.cd(dramsim3_dir)
-            os.exec("git checkout -f fca1245acfff01a4f18830cd15675e904564aa2a")
-        end
-        
-        -- 构建 DRAMsim3
-        if not os.isdir(build_dir) then
-            os.mkdir(build_dir)
-        end
-        
-        if not os.isfile(path.join(build_dir, "libdramsim3.a")) then
-            print("Building DRAMsim3...")
-            os.cd(build_dir)
-            os.exec("cmake -D COSIM=1 ..")
-            os.exec("make -j")
-            if not os.isfile(path.join(build_dir, "libdramsim3.a")) then
-                error("Failed to build DRAMsim3 library")
-            end
-        end
-    end)
-
-    on_fetch(function (package)
-        local result = {}
-        result.links = "dramsim3"
-        result.includedirs = path.join(package:get("dramsim3_dir"), "src")
-        result.linkdirs = package:get("build_dir")
-        result.defines = "DRAMSIM"
-        return result
-    end)
 
 package("softfloat_lib")
     on_load(function (package)
@@ -115,7 +82,12 @@ target("CPUDelaySim")
     --     add_deps("riscv_decode")
     --     add_files("arch/riscv/**.cpp")
     -- end
-    add_packages("yaml-cpp", "boost", "spdlog", "dramsim3_lib", "softfloat_lib")
+    if get_config("ram_sim") == "ramulator2" then
+        add_packages("ramulator2_lib")
+    else
+        add_packages("dramsim3_lib")
+    end
+    add_packages("yaml-cpp", "boost", "spdlog", "softfloat_lib")
 
 target("riscv_decode")
     set_kind("phony")

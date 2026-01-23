@@ -56,10 +56,12 @@ int Predictor::predict(uint64_t pc, uint64_t& next_pc, uint8_t& size, bool& take
         stream->rasv = false;
         history_manager->getMeta(metas[meta_idx]->history_meta);
         metas[meta_idx]->pred_addr = 0xdeadbeefdeadbeef;
+        int idx = 0;
         for (int i = 0; i < bp_layers.size(); i++) {
             uint64_t pre_pc = metas[meta_idx]->pred_addr;
             for (int j = 0; j < bp_layers[i].size(); j++) {
-                bp_layers[i][j]->predict(stream, metas[meta_idx]->meta[i]);
+                bp_layers[i][j]->predict(stream, metas[meta_idx]->meta[idx]);
+                idx++;
             }
             switch (stream->type) {
                 case COND: {

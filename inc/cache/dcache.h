@@ -12,7 +12,6 @@ public:
     void redirect() override;
 
 private:
-    void callbackFunc(uint16_t* ids, CacheTagv* tagv_i);
     void handleIdleReq();
 
     enum state_t {
