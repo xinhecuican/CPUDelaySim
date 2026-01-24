@@ -41,7 +41,9 @@ protected:
     int meta_idx = 0;
     int bubble = 0;
     bool pred_valid = false;
-    std::vector<std::vector<BP*>> bp_layers;
+    int max_delay = 0;
+    BP*** bp_layers;
+    int* bp_layers_size;
 };
 
 #endif

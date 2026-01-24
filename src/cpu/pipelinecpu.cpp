@@ -7,22 +7,9 @@ PipelineCPU::~PipelineCPU() {
         delete id_extra_insts[i];
     }
     delete[] id_extra_insts;
-    while (!idle_cache_req.empty()) {
-        delete idle_cache_req.front();
-        idle_cache_req.pop();
-    }
-    while (!work_cache_req.empty()) {
-        delete work_cache_req.front();
-        work_cache_req.pop();
-    }
-    while (!mem_idle_req.empty()) {
-        delete mem_idle_req.front();
-        mem_idle_req.pop();
-    }
-    while (!mem_work_req.empty()) {
-        delete mem_work_req.front();
-        mem_work_req.pop();
-    }
+    delete[] mem_end_map;
+    mem_req_list.clear();
+    cache_req_list.clear();
 }
 
 void PipelineCPU::afterLoad() {
@@ -30,13 +17,14 @@ void PipelineCPU::afterLoad() {
     pred_pc = pc;
     inst_count = 0;
     Base::arch->setInstret(&inst_count);
+    mem_end_map = new bool[retire_size];
     for (int i = 0; i < retire_size; i++) {
         CacheReqWrapper *req = initCacheReq();
         req->inst->info->exception = Base::arch->getExceptionNone();
-        idle_cache_req.push(req);
+        cache_req_list.push(req);
         CacheReq *mem_req = new CacheReq();
         mem_req->id[0] = i;
-        mem_idle_req.push(mem_req);
+        mem_req_list.push(mem_req);
         mem_end_map[i] = false;
     }
     id_extra_insts = new Inst *[retire_size];
@@ -47,15 +35,28 @@ void PipelineCPU::afterLoad() {
 
     icache = CacheManager::getInstance().getICache();
     dcache = CacheManager::getInstance().getDCache();
-    icache->setCallback(std::bind(&PipelineCPU::icacheCallback, this, std::placeholders::_1,
-                                  std::placeholders::_2));
-    dcache->setCallback(std::bind(&PipelineCPU::dcacheCallback, this, std::placeholders::_1,
-                                  std::placeholders::_2));
+    icache->setCallback([this](uint16_t* id, CacheTagv* tag) {
+        CacheReqWrapper *req_wrapper = this->cache_req_list.pop();
+        if (!this->id_valid) {
+            this->id_valid = true;
+            this->id_inst = req_wrapper->inst;
+            this->id_remain_size += req_wrapper->inst->size;
+        } else {
+            assert(!this->id_stall_valid);
+            this->id_stall_valid = true;
+            this->id_stall_inst = req_wrapper->inst;
+        }
+    });
+        
+    dcache->setCallback([this](uint16_t* id, CacheTagv* tag) {
+        this->mem_req_list.pop();
+        this->mem_end_map[id[0]] = true;
+    });
     predictor->afterLoad();
 }
 
 void PipelineCPU::exec() {
-    if (getTick() == 1752942) {
+    if (getTick() == 119926038) {
         Log::info("debug");
     }
     if (getTick() - wb_tick > 5000) {
@@ -104,7 +105,7 @@ void PipelineCPU::exec() {
             if (Base::arch->exceptionValid(exe_inst->info->exception)) {
                 exe_end = true;
             } else {
-                CacheReq *mem_req = mem_idle_req.front();
+                CacheReq *mem_req = mem_req_list.back();
                 switch (exe_inst->info->type) {
                 case MULT:
                     exe_stall_cycle = mult_delay;
@@ -164,8 +165,7 @@ void PipelineCPU::exec() {
                     mem_req->size = exe_inst->info->dst_idx[2];
                     mem_req->req = READ_SHARED;
                     if (dcache->lookup(0, mem_req)) {
-                        mem_idle_req.pop();
-                        mem_work_req.push(mem_req);
+                        mem_req_list.next();
                         exe_end = true;
                     }
                     exe_inst->mem_id = mem_req->id[0];
@@ -176,8 +176,7 @@ void PipelineCPU::exec() {
                         exe_end = true;
                         mem_end_map[mem_req->id[0]] = true;
                         exe_inst->mem_id = mem_req->id[0];
-                        mem_idle_req.pop();
-                        mem_idle_req.push(mem_req);
+                        mem_req_list.next();
                         break;
                     }
                 case STORE:
@@ -189,8 +188,7 @@ void PipelineCPU::exec() {
                     mem_req->size = exe_inst->info->dst_idx[2];
                     mem_req->req = WRITE_BACK;
                     if (dcache->lookup(0, mem_req)) {
-                        mem_idle_req.pop();
-                        mem_work_req.push(mem_req);
+                        mem_req_list.next();
                         exe_end = true;
                     }
                     exe_inst->mem_id = mem_req->id[0];
@@ -300,23 +298,22 @@ void PipelineCPU::exec() {
                                       req_wrapper->inst->paddr, req_wrapper->inst->info->exception);
         }
         if (unlikely(Base::arch->exceptionValid(req_wrapper->inst->info->exception))) {
-            if (work_cache_req.size() == 0 && !id_stall_valid) {
+            if (cache_req_list.one() && !id_stall_valid) {
                 id_valid = true;
                 id_inst = req_wrapper->inst;
                 id_remain_size += req_wrapper->inst->size;
-                idle_cache_req.push(req_wrapper);
+                cache_req_list.pop();
                 fetch_valid = false;
             }
         } else {
             req_wrapper->req->addr = req_wrapper->inst->paddr;
             if (icache->lookup(0, req_wrapper->req)) {
-                work_cache_req.push(req_wrapper);
                 fetch_valid = false;
             }
         }
     }
 
-    req_wrapper = idle_cache_req.front();
+    req_wrapper = cache_req_list.back();
     req_wrapper->inst->pc = pred_pc;
     req_wrapper->inst->info->exception = Base::arch->getExceptionNone();
     req_wrapper->inst->bp_meta_idx =
@@ -325,7 +322,7 @@ void PipelineCPU::exec() {
     if (req_wrapper->inst->bp_meta_idx >= 0) {
         pred_pc = req_wrapper->inst->next_pc;
         fetch_cache_req = req_wrapper;
-        idle_cache_req.pop();
+        cache_req_list.next();
         fetch_valid = true;
     }
 
@@ -339,41 +336,14 @@ PipelineCPU::CacheReqWrapper *PipelineCPU::initCacheReq() {
     return req_wrapper;
 }
 
-void PipelineCPU::icacheCallback(uint16_t *id, CacheTagv *tag) {
-    CacheReqWrapper *req_wrapper = work_cache_req.front();
-    work_cache_req.pop();
-    idle_cache_req.push(req_wrapper);
-    if (!id_valid) {
-        id_valid = true;
-        id_inst = req_wrapper->inst;
-        id_remain_size += req_wrapper->inst->size;
-    } else {
-        assert(!id_stall_valid);
-        id_stall_valid = true;
-        id_stall_inst = req_wrapper->inst;
-    }
-}
-
-void PipelineCPU::dcacheCallback(uint16_t *id, CacheTagv *tag) {
-    CacheReq *mem_req = mem_work_req.front();
-    mem_work_req.pop();
-    mem_idle_req.push(mem_req);
-    mem_end_map[id[0]] = true;
-}
-
 void PipelineCPU::frontRedirect(Inst *inst) {
     id_stall_valid = false;
     id_remain_size = 0;
-    if (fetch_valid) {
-        idle_cache_req.push(fetch_cache_req);
-    }
     fetch_valid = false;
     predictor->redirect(true, inst->real_target, DIRECT, inst->bp_meta_idx);
     icache->redirect();
-    for (int i = 0; i < work_cache_req.size(); i++) {
-        CacheReqWrapper *req = work_cache_req.front();
-        work_cache_req.pop();
-        idle_cache_req.push(req);
+    while (!cache_req_list.empty()) {
+        cache_req_list.pop();
     }
     pred_pc = inst->real_target;
 }
@@ -383,17 +353,12 @@ void PipelineCPU::brRedirect(Inst *inst) {
     id_stall_valid = false;
     id_remain_size = 0;
     id_wait_redirect = false;
-    if (fetch_valid) {
-        idle_cache_req.push(fetch_cache_req);
-    }
     fetch_valid = false;
     predictor->redirect(inst->info->dst_data[1], inst->real_target, inst->info->type,
                         inst->bp_meta_idx);
     icache->redirect();
-    for (int i = 0; i < work_cache_req.size(); i++) {
-        CacheReqWrapper *req = work_cache_req.front();
-        work_cache_req.pop();
-        idle_cache_req.push(req);
+    while (!cache_req_list.empty()) {
+        cache_req_list.pop();
     }
     pred_pc = inst->real_target;
 }
@@ -401,10 +366,8 @@ void PipelineCPU::brRedirect(Inst *inst) {
 void PipelineCPU::excRedirect(Inst *inst) {
     mem_req_valid = false;
     mem_valid = false;
-    for (int i = 0; i < mem_work_req.size(); i++) {
-        CacheReq *mem_req = mem_work_req.front();
-        mem_work_req.pop();
-        mem_idle_req.push(mem_req);
+    while (!mem_req_list.empty()) {
+        mem_req_list.pop();
     }
     exe_valid = false;
     exe_stall_cycle = 0;
@@ -413,17 +376,12 @@ void PipelineCPU::excRedirect(Inst *inst) {
     id_stall_valid = false;
     id_remain_size = 0;
     id_wait_redirect = false;
-    if (fetch_valid) {
-        idle_cache_req.push(fetch_cache_req);
-    }
     fetch_valid = false;
     predictor->redirect(false, inst->real_target, INT, inst->bp_meta_idx);
     icache->redirect();
     dcache->redirect();
-    for (int i = 0; i < work_cache_req.size(); i++) {
-        CacheReqWrapper *req = work_cache_req.front();
-        work_cache_req.pop();
-        idle_cache_req.push(req);
+    while (!cache_req_list.empty()) {
+        cache_req_list.pop();
     }
     pred_pc = inst->real_target;
 }

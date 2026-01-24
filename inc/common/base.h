@@ -16,6 +16,7 @@ public:
      * 
      */
     virtual void afterLoad() {}
+    virtual void finalize() {}
     static inline uint64_t getTick() { return *tick; }
     static inline void upTick() { (*tick)++; }
     static inline void setTick(uint64_t* tick) { Base::tick = tick; }

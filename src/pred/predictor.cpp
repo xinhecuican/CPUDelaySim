@@ -10,6 +10,11 @@ Predictor::~Predictor() {
         free(metas[i]->meta);
         free(metas[i]);
     }
+    for (int i = 0; i <= max_delay; i++) {
+        free(bp_layers[i]);
+    }
+    free(bp_layers);
+    free(bp_layers_size);
     free(metas);
 }
 
@@ -31,14 +36,18 @@ void Predictor::afterLoad() {
         metas[i]->stream = (BranchStream*)malloc(sizeof(BranchStream));
     }
 
-    int max_delay = 0;
     for (auto& bp : bps) {
         max_delay = std::max(max_delay, bp->getDelay());
     }
-    bp_layers.resize(max_delay + 1);
+    bp_layers = (BP***)malloc((max_delay + 1) * sizeof(BP**));
+    bp_layers_size = (int*)malloc((max_delay + 1) * sizeof(int));
+    memset(bp_layers_size, 0, (max_delay + 1) * sizeof(int));
+    for (int i = 0; i <= max_delay; i++) {
+        bp_layers[i] = (BP**)malloc(bps.size() * sizeof(BP*));
+    }
     int pre_delay = 0;
     for (int i = 0; i < bps.size(); i++) {
-        bp_layers[bps[i]->getDelay()].push_back(bps[i]);
+        bp_layers[bps[i]->getDelay()][bp_layers_size[bps[i]->getDelay()]++] = bps[i];
         assert(bps[i]->getDelay() == pre_delay || bps[i]->getDelay() == pre_delay + 1);
         pre_delay = bps[i]->getDelay();
     }
@@ -57,9 +66,9 @@ int Predictor::predict(uint64_t pc, uint64_t& next_pc, uint8_t& size, bool& take
         history_manager->getMeta(metas[meta_idx]->history_meta);
         metas[meta_idx]->pred_addr = 0xdeadbeefdeadbeef;
         int idx = 0;
-        for (int i = 0; i < bp_layers.size(); i++) {
+        for (int i = 0; i <= max_delay; i++) {
             uint64_t pre_pc = metas[meta_idx]->pred_addr;
-            for (int j = 0; j < bp_layers[i].size(); j++) {
+            for (int j = 0; j < bp_layers_size[i]; j++) {
                 bp_layers[i][j]->predict(stream, metas[meta_idx]->meta[idx]);
                 idx++;
             }

@@ -27,6 +27,16 @@ public:
             head = nullptr;
         }
     }
+    void clear() {
+        if (sizeTail != nullptr) {
+            LinkNode* tmp = sizeTail;
+            while (tmp->next != sizeTail) {
+                delete tmp->data;
+                tmp = tmp->next;
+            }
+            delete tmp->data;
+        }
+    }
     void push(T* data) {
         LinkNode* node = new LinkNode();
         node->data = data;

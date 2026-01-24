@@ -4,6 +4,7 @@
 #include "cpu/cpu.h"
 #include "pred/predictor.h"
 #include "cache/cache.h"
+#include "common/linklist.h"
 
 class PipelineCPU : public CPU {
 public:
@@ -60,8 +61,6 @@ private:
     };
 
     CacheReqWrapper* initCacheReq();
-    void icacheCallback(uint16_t* id, CacheTagv* tag);
-    void dcacheCallback(uint16_t* id, CacheTagv* tag);
     void frontRedirect(Inst* inst);
     void brRedirect(Inst* inst);
     void excRedirect(Inst* inst);
@@ -90,9 +89,8 @@ private:
     bool mem_valid = false;
     bool wb_valid = false;
 
-    std::queue<CacheReqWrapper*> idle_cache_req;
+    LinkList<CacheReqWrapper> cache_req_list;
     CacheReqWrapper* fetch_cache_req;
-    std::queue<CacheReqWrapper*> work_cache_req;
     uint64_t id_exception = 0;
     bool id_stall_valid = false;
     Inst* id_inst;
@@ -108,9 +106,8 @@ private:
     Inst* exe_inst;
     Inst* mem_inst;
     
-    std::queue<CacheReq*> mem_idle_req;
-    std::queue<CacheReq*> mem_work_req;
-    std::map<int, bool> mem_end_map;
+    LinkList<CacheReq> mem_req_list;
+    bool* mem_end_map;
     uint64_t mem_paddr;
     bool mem_req_valid = false;
     
