@@ -5,6 +5,7 @@
 #include "pred/predictor.h"
 #include "cache/cache.h"
 #include "common/linklist.h"
+#include "common/dbhandler.h"
 
 class PipelineCPU : public CPU {
 public:
@@ -26,6 +27,11 @@ private:
         uint64_t real_target;
         uint64_t paddr;
         DecodeInfo* info;
+
+#ifdef DB_INST
+        uint64_t start_tick;
+        uint16_t delay[4];
+#endif
 
         Inst() {
             info = new DecodeInfo();
@@ -113,6 +119,25 @@ private:
     
     Inst* wb_inst;
     uint64_t wb_tick = 0;
+
+#ifdef DB_INST
+    struct  packed DBInstData {
+        uint64_t start_tick;
+        uint64_t pc;
+        uint64_t paddr;
+        InstType type;
+        uint16_t delay[4];
+
+        DBInstData(Inst* inst) {
+            start_tick = inst->start_tick;
+            pc = inst->real_pc;
+            paddr = inst->paddr;
+            type = inst->info->type;
+            *(uint64_t*)delay = *(uint64_t*)inst->delay;
+        }
+    };
+    LogDB* log_db;
+#endif
 };
 
 REGISTER_CLASS(PipelineCPU)

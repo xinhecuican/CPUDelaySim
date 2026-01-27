@@ -1,4 +1,5 @@
 memory_path=payloads/fw_payload_redis.bin
 log_path=logs/pipeline
 arch_path=configs/pipeline/arch.cfg
-log_start_tick=0
+log_start_tick=196500000
+end_tick=1000

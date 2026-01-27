@@ -243,7 +243,7 @@ uint64_t RiscvArch::updateEnv() {
     NemuProxy::getInstance().regcpy((void*)&ref, REF_TO_DUT);
     if (NemuProxy::getInstance().pc != env->pc) {
         Log::error("RiscvArch::updateEnv: pc mismatch, ref: 0x{:x}, dut: 0x{:x}", NemuProxy::getInstance().pc, env->pc);
-        exit(1);
+        ExitHandler::exit(1);
     }
     NemuProxy::getInstance().pc = ref.csrs.this_pc;
     uint64_t dut_mstatus;
@@ -258,7 +258,7 @@ uint64_t RiscvArch::updateEnv() {
             case EXC_SC:
             case EXC_HE:
                 Log::error("exception {} at 0x{:x}", info->exception, env->pc);
-                exit(1);
+                ExitHandler::exit(1);
             case EXC_II:
             case EXC_LAM:
             case EXC_LAF:
@@ -326,12 +326,12 @@ xtval_end:;
         ((uint64_t)((state->mstatus & MSTATUS_FS) == MSTATUS_FS) << MSTATUS64_SD);
                 if (ref.csrs.mstatus != dut_mstatus) {
                     Log::error("RiscvArch::updateEnv: mstatus mismatch, ref: 0x{:x}, dut: 0x{:x}", ref.csrs.mstatus, dut_mstatus);
-                    exit(1);
+                    ExitHandler::exit(1);
                 }
                 for (int i = 0; i < 32; i++) {
                     if (state->gpr[i] != ref.regs.gpr[i]) {
                         Log::error("RiscvArch::updateEnv: reg gpr[{}] mismatch, ref: 0x{:x}, dut: 0x{:x}", i, ref.regs.gpr[i], state->gpr[i]);
-                        exit(1);
+                        ExitHandler::exit(1);
                     }
                 }
 #endif
@@ -357,7 +357,7 @@ xtval_end:;
                 }
             default: 
                 Log::error("RiscvArch::updateEnv: unknown exception {} at 0x{:x}", info->exception, env->pc);
-                exit(1);
+                ExitHandler::exit(1);
         }
     }
 

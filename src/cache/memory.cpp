@@ -45,7 +45,7 @@ void Memory::afterLoad() {
     ram = (uint8_t *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if (ram == (uint8_t*)MAP_FAILED) {
         Log::error("could not mmap memory size {}", size);
-        exit(1);
+        ExitHandler::exit(1);
     }
 
 #ifdef LOG_MEM

@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <chrono>
+#include "common/exithandler.h"
 namespace fs = std::filesystem;
 
 // Custom trim function to remove whitespace from both ends of a string
@@ -42,7 +43,7 @@ public:
         std::map<std::string, std::string> config_map;
         if (!config_file.is_open()) {
             std::cerr << "Error: Failed to open config file " << config_path << std::endl;
-            exit(1);
+            ExitHandler::exit(1);
         }
 
         std::string line;

@@ -5,6 +5,7 @@
 #endif
 #include "cache/cachemanager.h"
 #include "common/log.h"
+#include "common/stats.h"
 
 EMU::EMU() {
 }
@@ -25,6 +26,7 @@ void EMU::init(const std::string& path) {
     Base::setArch(arch);
     Base::setTick(&tick);
     arch->setTick(&tick);
+    Stats::registerStat(&tick, "tick", "tick count");
     CacheManager::getInstance().memory = new Memory(config.memory_path);
     CacheManager::getInstance().load();
     CacheManager::getInstance().memory->load();

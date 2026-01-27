@@ -16,6 +16,8 @@
 #include <spdlog/spdlog.h>
 #include "common/reflect.h"
 #include "common/defines.h"
+#include "common/stats.h"
+#include "common/exithandler.h"
 
 #define likely(x)    __builtin_expect(!!(x), 1)
 #define unlikely(x)  __builtin_expect(!!(x), 0)

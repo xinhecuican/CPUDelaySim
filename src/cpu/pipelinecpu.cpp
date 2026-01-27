@@ -17,6 +17,7 @@ void PipelineCPU::afterLoad() {
     pred_pc = pc;
     inst_count = 0;
     Base::arch->setInstret(&inst_count);
+    Stats::registerStat(&inst_count, "inst_count", "total number of instructions");
     mem_end_map = new bool[retire_size];
     for (int i = 0; i < retire_size; i++) {
         CacheReqWrapper *req = initCacheReq();
@@ -37,6 +38,9 @@ void PipelineCPU::afterLoad() {
     dcache = CacheManager::getInstance().getDCache();
     icache->setCallback([this](uint16_t* id, CacheTagv* tag) {
         CacheReqWrapper *req_wrapper = this->cache_req_list.pop();
+#ifdef DB_INST
+        req_wrapper->inst->delay[0] = getTick() - req_wrapper->inst->start_tick;
+#endif
         if (!this->id_valid) {
             this->id_valid = true;
             this->id_inst = req_wrapper->inst;
@@ -53,15 +57,29 @@ void PipelineCPU::afterLoad() {
         this->mem_end_map[id[0]] = true;
     });
     predictor->afterLoad();
+#ifdef DB_INST
+    log_db = new LogDB("inst");
+    log_db->addMeta(R"({
+        "tick": 8,
+        "pc": 8,
+        "paddr": 8,
+        "type": 1,
+        "id": 2,
+        "exe": 2,
+        "mem": 2,
+        "wb": 2
+    })"_json);
+    log_db->init();
+#endif
 }
 
 void PipelineCPU::exec() {
-    if (getTick() == 119926038) {
+    if (getTick() == 558546785) {
         Log::info("debug");
     }
-    if (getTick() - wb_tick > 5000) {
+    if (unlikely(getTick() - wb_tick > 5000)) {
         Log::error("PipelineCPU::exec: WB stage stalled for {} ticks", getTick() - wb_tick);
-        exit(1);
+        ExitHandler::exit(1);
     }
     if (wb_valid) {
         if (Base::arch->exceptionValid(wb_inst->info->exception)) {
@@ -71,6 +89,10 @@ void PipelineCPU::exec() {
         wb_inst->info->exception = Base::arch->getExceptionNone();
         inst_count++;
         wb_tick = getTick();
+#ifdef DB_INST
+        DBInstData db_inst(wb_inst);
+        log_db->addData<DBInstData>(db_inst);
+#endif
     }
     bool mem_end = false;
     if (mem_valid) {
@@ -88,6 +110,9 @@ void PipelineCPU::exec() {
         }
 
         if (mem_end) {
+#ifdef DB_INST
+            mem_inst->delay[3] = getTick() - mem_inst->start_tick;
+#endif
             mem_valid = false;
             mem_end = false;
             wb_valid = true;
@@ -211,6 +236,9 @@ void PipelineCPU::exec() {
         }
 
         if (exe_end && !mem_valid) {
+#ifdef DB_INST
+            exe_inst->delay[2] = getTick() - exe_inst->start_tick;
+#endif
             exe_end = false;
             exe_valid = false;
             mem_valid = true;
@@ -262,7 +290,7 @@ void PipelineCPU::exec() {
                 Log::error(
                     "PipelineCPU::exec: ID stage PC changed from 0x{:x} to 0x{:x} without redirect",
                     id_inst->pc, pc);
-                exit(1);
+                ExitHandler::exit(1);
             }
             if (id_wait_redirect) {
                 wait_redirect_tick = getTick();
@@ -270,7 +298,7 @@ void PipelineCPU::exec() {
             }
         } else if (getTick() - wait_redirect_tick > 5000) {
             Log::error("id wait redirect for 5000 cycle\n");
-            exit(1);
+            ExitHandler::exit(1);
         }
         exe_inst = id_inst;
         if (id_remain_size <= 0) {
@@ -285,6 +313,9 @@ void PipelineCPU::exec() {
     }
 
     if (!id_valid && id_stall_valid) {
+#ifdef DB_INST
+        id_inst->delay[1] = getTick() - id_inst->start_tick;
+#endif
         id_valid = true;
         id_inst = id_stall_inst;
         id_remain_size += id_inst->size;
@@ -300,6 +331,9 @@ void PipelineCPU::exec() {
         if (unlikely(Base::arch->exceptionValid(req_wrapper->inst->info->exception))) {
             if (cache_req_list.one() && !id_stall_valid) {
                 id_valid = true;
+#ifdef DB_INST
+                req_wrapper->inst->delay[0] = getTick() - req_wrapper->inst->start_tick;
+#endif
                 id_inst = req_wrapper->inst;
                 id_remain_size += req_wrapper->inst->size;
                 cache_req_list.pop();
@@ -324,6 +358,9 @@ void PipelineCPU::exec() {
         fetch_cache_req = req_wrapper;
         cache_req_list.next();
         fetch_valid = true;
+#ifdef DB_INST
+        req_wrapper->inst->start_tick = getTick();
+#endif
     }
 
     Base::upTick();

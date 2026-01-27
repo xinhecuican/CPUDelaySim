@@ -5,9 +5,12 @@ set_languages("c++20")
 includes("scripts/dramsim3")
 includes("scripts/ramulator2")
 
+add_requires("nlohmann_json")
 add_requires("yaml-cpp")
 add_requires("boost")
 add_requires("spdlog")
+add_requires("thread-pool")
+add_requires("lz4")
 add_requires("dramsim3_lib")
 add_requires("ramulator2_lib")
 add_requires("softfloat_lib")
@@ -87,7 +90,7 @@ target("CPUDelaySim")
     else
         add_packages("dramsim3_lib")
     end
-    add_packages("yaml-cpp", "boost", "spdlog", "softfloat_lib")
+    add_packages("nlohmann_json", "yaml-cpp", "boost", "spdlog", "softfloat_lib", "thread-pool", "lz4")
 
 target("riscv_decode")
     set_kind("phony")

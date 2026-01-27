@@ -20,7 +20,7 @@ NemuProxy::NemuProxy() {
     const char *nemu_home = getenv("NEMU_HOME");
     if (nemu_home == NULL) {
       printf("FATAL: $(NEMU_HOME) is not defined!\n");
-      exit(1);
+      ExitHandler::exit(1);
     }
     const char *so = "/build/riscv64-nemu-interpreter-so";
     char *buf = (char *)malloc(strlen(nemu_home) + strlen(so) + 1);

@@ -34,6 +34,11 @@ public:
         }
         serial_logger->set_pattern("%v");
         serial_logger->set_level(spdlog::level::trace);
+
+        std::shared_ptr<spdlog::logger> stat_logger = spdlog::basic_logger_mt<spdlog::async_factory>("stat", fs::path(log_path) / "stat.log", true);
+        stat_logger->set_pattern("%v");
+        stat_logger->set_level(spdlog::level::trace);
+
         spdlog::set_default_logger(std_logger);
 
     }
@@ -70,6 +75,23 @@ public:
 
     static inline void serial(char c) {
         spdlog::get("serial")->trace("{}", c);
+    }
+
+    template <typename... Args>
+    static inline void stat(spdlog::format_string_t<Args...> fmt, Args &&...args) {
+        spdlog::get("stat")->info(fmt, std::forward<Args>(args)...);
+    }
+
+    static inline void stat(const std::string& name, int value) {
+        spdlog::get("stat")->info("{}: {}", name, value);
+    }
+
+    static inline void stat(const std::string& name, uint64_t value) {
+        spdlog::get("stat")->info("{}: {}", name, value);
+    }
+
+    static inline void stat(const std::string& name, double value) {
+        spdlog::get("stat")->info("{}: {}", name, value);
     }
 
 };

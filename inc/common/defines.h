@@ -5,6 +5,8 @@
 // #define LOG_INST
 // #define LOG_MEM
 
+#define DB_INST
+
 // #define DIFFTEST
 
 #endif

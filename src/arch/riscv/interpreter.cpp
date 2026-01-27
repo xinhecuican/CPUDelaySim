@@ -66,7 +66,7 @@ typedef int64_t TCGv_i64;
 # define INT64_MIN		(-__INT64_C(9223372036854775807)-1)
 #define __NOT_IMPLEMENTED__ do {printf("LA_EMU NOT IMPLEMENTED %s\n", __func__); ctx->arch->printState(); return false;} while(0);
 #define __NOT_CORRECTED_IMPLEMENTED__ do {printf("LA_EMU NOT CORRECTED IMPLEMENTED %s\n", __func__); ctx->arch->printState();} while(0);
-#define __NOT_IMPLEMENTED_EXIT__ do {printf("LA_EMU NOT IMPLEMENTED %s\n", __func__); ctx->arch->printState(); exit(1); return false;} while(0);
+#define __NOT_IMPLEMENTED_EXIT__ do {printf("LA_EMU NOT IMPLEMENTED %s\n", __func__); ctx->arch->printState(); ExitHandler::exit(1); return false;} while(0);
 
 static int64_t get_gpr_32(DisasContext *ctx, int reg_num, DisasExtend ext) {
     switch (ext) {
@@ -1139,8 +1139,22 @@ static bool trans_cbo_zero(DisasContext *ctx, arg_cbo_zero *a) {__NOT_IMPLEMENTE
 static bool trans_clmul(DisasContext *ctx, arg_clmul *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_clmulh(DisasContext *ctx, arg_clmulh *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_clmulr(DisasContext *ctx, arg_clmulr *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_clz(DisasContext *ctx, arg_clz *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_clzw(DisasContext *ctx, arg_clzw *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_clz(DisasContext *ctx, arg_clz *a) {
+    uint64_t src1 = get_gpr_64(ctx, a->rs1, EXT_NONE);
+    uint64_t dest = std::countl_zero(src1);
+    SET_GPR_64
+    SET_SRC1_DST
+    ctx->info->type = INT;
+    return true;
+}
+static bool trans_clzw(DisasContext *ctx, arg_clzw *a) {
+    uint64_t src1 = get_gpr_64(ctx, a->rs1, EXT_NONE);
+    uint64_t dest = std::countl_zero((uint32_t)src1);
+    SET_GPR_64
+    SET_SRC1_DST
+    ctx->info->type = INT;
+    return true;
+}
 static bool trans_cpop(DisasContext *ctx, arg_cpop *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_cpopw(DisasContext *ctx, arg_cpopw *a) {__NOT_IMPLEMENTED_EXIT__}
 
@@ -1258,8 +1272,22 @@ static bool trans_csrrwi(DisasContext *ctx, arg_csrrwi *a) {
     ctx->info->type = CSRWR;
     return true;
 }
-static bool trans_ctz(DisasContext *ctx, arg_ctz *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_ctzw(DisasContext *ctx, arg_ctzw *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_ctz(DisasContext *ctx, arg_ctz *a) {
+    uint64_t src1 = get_gpr_64(ctx, a->rs1, EXT_NONE);
+    uint64_t dest = std::countr_zero(src1);
+    SET_GPR_64
+    SET_SRC1_DST
+    ctx->info->type = INT;
+    return true;
+}
+static bool trans_ctzw(DisasContext *ctx, arg_ctzw *a) {
+    uint64_t src1 = get_gpr_64(ctx, a->rs1, EXT_NONE);
+    uint64_t dest = std::countr_zero((uint32_t)src1);
+    SET_GPR_64
+    SET_SRC1_DST
+    ctx->info->type = INT;
+    return true;
+}
 static bool trans_czero_eqz(DisasContext *ctx, arg_czero_eqz *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_czero_nez(DisasContext *ctx, arg_czero_nez *a) {__NOT_IMPLEMENTED_EXIT__}
 
@@ -1698,7 +1726,14 @@ static bool trans_fmv_x_d(DisasContext *ctx, arg_fmv_x_d *a) {
     return true;
 }
 static bool trans_fmv_x_h(DisasContext *ctx, arg_fmv_x_h *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_fmv_x_w(DisasContext *ctx, arg_fmv_x_w *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_fmv_x_w(DisasContext *ctx, arg_fmv_x_w *a) {
+    REQUIRE_FPU
+    TCGv dest = nanbox_s(get_fpr_64(ctx, a->rs1));
+    SET_FPR_64
+    SET_SRC1F_DST
+    ctx->info->type = FMISC_SIMPLE;
+    return true;
+}
 static bool trans_fnmadd_d(DisasContext *ctx, arg_fnmadd_d *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_fnmadd_h(DisasContext *ctx, arg_fnmadd_h *a) {__NOT_IMPLEMENTED_EXIT__}
 static bool trans_fnmadd_s(DisasContext *ctx, arg_fnmadd_s *a) {__NOT_IMPLEMENTED_EXIT__}
@@ -1749,56 +1784,69 @@ static bool trans_fsd(DisasContext *ctx, arg_fsd *a) {
 }
 static bool trans_fsgnj_d(DisasContext *ctx, arg_fsgnj_d *a) {
     REQUIRE_FPU
-    TCGv src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
     uint64_t dest;
-    if (a->rs1 == a->rs2) { /* FMOV */
-        dest = src1;
-        SET_SRC1F_DSTF
-    } else {
-        int64_t src2 = get_fpr_64(ctx, a->rs2);
-        dest = deposit64(src2, 0, 63, src1);
-        SET_SRC2F_DSTF
-    }
+    dest = (src1 & 0x7fffffffffffffffULL) | (src2 & ~0x8000000000000000ULL);
+    SET_SRC2F_DSTF
     SET_FPR_64
     ctx->info->type = FMISC_SIMPLE;
     return true;
 }
 static bool trans_fsgnj_h(DisasContext *ctx, arg_fsgnj_h *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a) {
+    REQUIRE_FPU
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
+    uint64_t dest;
+    dest = (src1 & 0x7fffffffffffffffULL) | ((~src2) & 0x8000000000000000ULL);
+    SET_SRC2F_DSTF
+    SET_FPR_64
+    ctx->info->type = FMISC_SIMPLE;
+    return true;
+}
 static bool trans_fsgnjn_h(DisasContext *ctx, arg_fsgnjn_h *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_fsgnjn_s(DisasContext *ctx, arg_fsgnjn_s *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_fsgnjn_s(DisasContext *ctx, arg_fsgnjn_s *a) {
+    REQUIRE_FPU
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
+    uint64_t dest;
+    dest = (src1 & 0x7fffffffULL) | ((~src2) & 0x80000000ULL);
+    SET_SRC2F_DSTF
+    SET_FPR_64
+    ctx->info->type = FMISC_SIMPLE;
+    return true;
+}
 static bool trans_fsgnj_s(DisasContext *ctx, arg_fsgnj_s *a) {
     REQUIRE_FPU
-    TCGv src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
     uint64_t dest;
-    ctx->info->src_reg[0] = a->rs1 | DSTF_REG_MASK;
-    if (a->rs1 == a->rs2) { /* FMOV */
-        dest = src1;
-        SET_SRC1F_DSTF
-    } else {
-        int64_t src2 = get_fpr_64(ctx, a->rs2);
-        dest = deposit64(src2, 0, 31, src1);
-        SET_SRC2F_DSTF
-    }
+    dest = (src1 & 0x7fffffffULL) | (src2 & 0x80000000ULL);
+    SET_SRC2F_DSTF
     SET_FPR_64
     ctx->info->type = FMISC_SIMPLE;
     return true;
 }
 static bool trans_fsgnjx_h(DisasContext *ctx, arg_fsgnjx_h *a) {__NOT_IMPLEMENTED_EXIT__}
-static bool trans_fsgnjx_s(DisasContext *ctx, arg_fsgnjx_s *a) {__NOT_IMPLEMENTED_EXIT__}
+static bool trans_fsgnjx_s(DisasContext *ctx, arg_fsgnjx_s *a) {
+    REQUIRE_FPU
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
+    uint64_t dest;
+    dest = (src1 & 0x7fffffffULL) | ((src1 ^ src2) & 0x80000000ULL);
+    SET_SRC2F_DSTF
+    SET_FPR_64
+    ctx->info->type = FMISC_SIMPLE;
+    return true;
+}
 static bool trans_fsgnjx_d(DisasContext *ctx, arg_fsgnjx_d *a) {
     REQUIRE_FPU
-    TCGv src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src1 = get_fpr_64(ctx, a->rs1);
+    uint64_t src2 = get_fpr_64(ctx, a->rs2);
     uint64_t dest;
-    ctx->info->src_reg[0] = a->rs1 | DSTF_REG_MASK;
-    if (a->rs1 == a->rs2) { /* FABS */
-        dest = src1 & (~INT64_MIN);
-        SET_SRC1F_DSTF
-    } else {
-        int64_t src2 = get_fpr_64(ctx, a->rs2);
-        dest = src1 ^ (src2 & INT64_MIN);
-        SET_SRC2F_DSTF
-    }
+    dest = (src1 & 0x7fffffffffffffffULL) | ((src1 ^ src2) & 0x8000000000000000ULL);
+    SET_SRC2F_DSTF
     SET_FPR_64
     ctx->info->type = FMISC_SIMPLE;
     return true;
