@@ -15,19 +15,20 @@ public:
     static constexpr uint64_t SLICE_BUFFER_SIZE = SLICE_SIZE + 1024;
     LogDB(const std::string& dbname);
     void addMeta(const std::string& name, int size);
+    void addMeta(const std::string& name, int size, const std::string& description);
+    void setPrimaryKey(const std::string& name);
     void addMeta(json data);
     void init();
+    void addData(uint8_t* buffer, uint32_t size);
     template <typename T>
     void addData(T& data) {
-        constexpr uint32_t size = sizeof(data);
-        memcpy(&inp_buffer[process_slice][buffer_slice_info[process_slice].inp_buffer_idx], &data, size);
-        uint32_t upd_idx = buffer_slice_info[process_slice].inp_buffer_idx + size;
-        if (upd_idx >= SLICE_BUFFER_SIZE) {
-            buffer_slice_info[process_slice].state = PROCESS;
-        }
-        buffer_slice_info[process_slice].inp_buffer_idx = upd_idx;
-        checkCompress();
-        checkWriteback();
+        constexpr uint32_t size = sizeof(T);
+        addData((uint8_t*)&data, size);
+    }
+    template <typename T>
+    void addData(T* data) {
+        constexpr uint32_t size = sizeof(T);
+        addData(reinterpret_cast<uint8_t*>(data), size);
     }
     void close();
 

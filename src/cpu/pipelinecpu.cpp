@@ -38,9 +38,6 @@ void PipelineCPU::afterLoad() {
     dcache = CacheManager::getInstance().getDCache();
     icache->setCallback([this](uint16_t* id, CacheTagv* tag) {
         CacheReqWrapper *req_wrapper = this->cache_req_list.pop();
-#ifdef DB_INST
-        req_wrapper->inst->delay[0] = getTick() - req_wrapper->inst->start_tick;
-#endif
         if (!this->id_valid) {
             this->id_valid = true;
             this->id_inst = req_wrapper->inst;
@@ -59,16 +56,14 @@ void PipelineCPU::afterLoad() {
     predictor->afterLoad();
 #ifdef DB_INST
     log_db = new LogDB("inst");
-    log_db->addMeta(R"({
-        "tick": 8,
-        "pc": 8,
-        "paddr": 8,
-        "type": 1,
-        "id": 2,
-        "exe": 2,
-        "mem": 2,
-        "wb": 2
-    })"_json);
+    log_db->addMeta("tick", 8);
+    log_db->addMeta("pc", 8);
+    log_db->addMeta("paddr", 8);
+    log_db->addMeta("type", 1);
+    log_db->addMeta("id", 2);
+    log_db->addMeta("exe", 2);
+    log_db->addMeta("mem", 2);
+    log_db->addMeta("wb", 2);
     log_db->init();
 #endif
 }
@@ -91,7 +86,7 @@ void PipelineCPU::exec() {
         wb_tick = getTick();
 #ifdef DB_INST
         DBInstData db_inst(wb_inst);
-        log_db->addData<DBInstData>(db_inst);
+        log_db->addData<DBInstData>(&db_inst);
 #endif
     }
     bool mem_end = false;
@@ -260,6 +255,7 @@ void PipelineCPU::exec() {
         }
         if (!id_wait_redirect) {
             id_inst->real_pc = pc;
+            id_inst->paddr = id_paddr;
             id_inst->real_target = Base::arch->updateEnv();
             pc = id_inst->real_target;
 
@@ -300,6 +296,9 @@ void PipelineCPU::exec() {
             Log::error("id wait redirect for 5000 cycle\n");
             ExitHandler::exit(1);
         }
+#ifdef DB_INST
+        id_inst->delay[1] = getTick() - id_inst->start_tick;
+#endif
         exe_inst = id_inst;
         if (id_remain_size <= 0) {
             id_valid = false;
@@ -313,9 +312,6 @@ void PipelineCPU::exec() {
     }
 
     if (!id_valid && id_stall_valid) {
-#ifdef DB_INST
-        id_inst->delay[1] = getTick() - id_inst->start_tick;
-#endif
         id_valid = true;
         id_inst = id_stall_inst;
         id_remain_size += id_inst->size;
@@ -342,6 +338,9 @@ void PipelineCPU::exec() {
         } else {
             req_wrapper->req->addr = req_wrapper->inst->paddr;
             if (icache->lookup(0, req_wrapper->req)) {
+#ifdef DB_INST
+                req_wrapper->inst->delay[0] = getTick() - req_wrapper->inst->start_tick;
+#endif
                 fetch_valid = false;
             }
         }

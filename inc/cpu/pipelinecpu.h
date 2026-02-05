@@ -26,12 +26,11 @@ private:
         uint64_t real_pc;
         uint64_t real_target;
         uint64_t paddr;
-        DecodeInfo* info;
-
 #ifdef DB_INST
         uint64_t start_tick;
         uint16_t delay[4];
 #endif
+        DecodeInfo* info;
 
         Inst() {
             info = new DecodeInfo();
@@ -42,12 +41,7 @@ private:
         }
 
         void copy(Inst* other) {
-            pc = other->pc;
-            next_pc = other->next_pc;
-            taken = other->taken;
-            bp_meta_idx = other->bp_meta_idx;
-            size = other->size;
-            pred_error = other->pred_error;
+            memcpy(this, other, offsetof(Inst, info));
             memcpy(info, other->info, sizeof(DecodeInfo));
         }
     };
