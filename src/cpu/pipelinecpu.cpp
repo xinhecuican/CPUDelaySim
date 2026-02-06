@@ -56,6 +56,7 @@ void PipelineCPU::afterLoad() {
     predictor->afterLoad();
 #ifdef DB_INST
     log_db = new LogDB("inst");
+    log_db->addTypeName();
     log_db->addMeta("tick", 8);
     log_db->addMeta("pc", 8);
     log_db->addMeta("paddr", 8);

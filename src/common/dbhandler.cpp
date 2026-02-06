@@ -1,6 +1,7 @@
 #include "common/dbhandler.h"
 #include <zstd.h>
 #include "config.h"
+#include "common/common.h"
 
 BS::thread_pool pool;
 std::vector<LogDB*> DBHandler::dbs;
@@ -22,6 +23,14 @@ void LogDB::addMeta(const std::string& name, int size, const std::string& descri
     meta["type_info"].push_back(
         {{"name", name}, {"size", size}, {"description", description}}
     );
+}
+
+void LogDB::addTypeName() {
+    auto ar = json::array();
+    for (int i = 0; i < TYPE_NUM; i++) {
+        ar.push_back(InstTypeName[i]);
+    }
+    meta["type_name"] = ar;
 }
 
 void LogDB::setPrimaryKey(const std::string& name) {

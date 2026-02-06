@@ -68,6 +68,8 @@ enum packed InstType {
     TYPE_NUM = 29
 };
 
+extern std::string InstTypeName[];
+
 struct FetchStream {
     uint64_t tick;
     uint64_t pc;
