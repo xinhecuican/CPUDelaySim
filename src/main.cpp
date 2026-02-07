@@ -12,6 +12,7 @@ void clearGlobal() {
     Stats::writeback();
     DBHandler::closeDB();
     spdlog::shutdown();
+    std::cout << "Global resources cleared." << std::endl;
 }
 
 void signal_handler(int signal) {

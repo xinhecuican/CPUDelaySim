@@ -42,11 +42,17 @@ public:
         spdlog::set_default_logger(std_logger);
 
     }
-    static void init(const std::string& name, const std::string& log_file) {
+    static void init(const std::string& name, const std::string& log_file, bool is_stdout = false) {
         try {
-            auto logger = spdlog::basic_logger_mt<spdlog::async_factory>(name, log_file);
-            logger->set_pattern("%v");
-            logger->set_level(spdlog::level::trace);
+            if (is_stdout) {
+                auto logger = spdlog::stdout_color_mt(name);
+                logger->set_pattern("%v");
+                logger->set_level(spdlog::level::trace);
+            } else {
+                auto logger = spdlog::basic_logger_mt<spdlog::async_factory>(name, log_file);
+                logger->set_pattern("%v");
+                logger->set_level(spdlog::level::trace);
+            }
         } catch (const spdlog::spdlog_ex& ex) {
             std::cout << "Log initialization failed: " << ex.what() << std::endl;
         }

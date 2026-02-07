@@ -4,6 +4,7 @@
 // #define LOG_PC
 // #define LOG_INST
 // #define LOG_MEM
+// #define LOG_DBHANDLER
 
 #define DB_INST
 

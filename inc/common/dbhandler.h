@@ -5,15 +5,19 @@
 #include <nlohmann/json.hpp>
 #include "BS_thread_pool.hpp"
 #include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <zstd.h>
 using json = nlohmann::json;
 
 class LogDB {
 public:
-    static constexpr uint64_t BUFFER_SIZE = 1024 * 1024 * 16;
+    static constexpr uint64_t BUFFER_SIZE = 1024 * 1024 * 32;
     static constexpr uint64_t BUFFER_SLICE = 4;
     static constexpr uint64_t SLICE_SIZE = BUFFER_SIZE / BUFFER_SLICE;
     static constexpr uint64_t SLICE_BUFFER_SIZE = SLICE_SIZE + 1024;
     LogDB(const std::string& dbname);
+    ~LogDB();
     void addMeta(const std::string& name, int size);
     void addMeta(const std::string& name, int size, const std::string& description);
     void setPrimaryKey(const std::string& name);
@@ -36,13 +40,16 @@ public:
 private:
     enum BufferState {
         FREE,
-        PROCESS,
+        PROCESS_READY,
+        PROCESSING,
+        PROCESS_DONE,
         DONE
     };
     struct BufferSlice {
         BufferState state;
         int inp_buffer_idx;
         int out_buffer_size;
+        ZSTD_CCtx* zstd_ctx;
     };
     void checkCompress();
     void checkWriteback();
@@ -58,6 +65,9 @@ private:
     int compress_slice = 0;
     int writeback_slice = 0;
     bool is_writing = false;
+    std::mutex mtx;
+    std::condition_variable cv;
+    uint64_t origin_size = 0;
 };
 
 class DBHandler {
