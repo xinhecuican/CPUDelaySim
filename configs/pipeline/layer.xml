@@ -1,13 +1,14 @@
 
 <root>
   <PipelineCPU>
-    <Predictor container="predictor">
+    <PipePredictor container="predictor">
       <BTB container="bps" type="vector"/>
       <GShareBP container="bps" type="vector"/>
+      <RAS container="bps" type="vector"/>
       <HistoryManager container="history_manager">
         <GHR container="histories" type="vector"/>
       </HistoryManager>
-    </Predictor>
+    </PipePredictor>
   </PipelineCPU>
   <CacheManager>
     <Uart container="devices" type="vector"/>

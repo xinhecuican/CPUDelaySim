@@ -2,15 +2,17 @@
 
 void ICache::afterLoad() {
     callback_id = parent->setCallback([this](uint16_t* ids, CacheTagv* tagv_i) {
+        in_callback = true;
         CacheTagv* tagv = this->tagvs[this->lookup_set][this->replace_way];
         tagv->tag = this->lookup_tag;
         tagv->valid = true; 
         if (this->req_clear_wait) {
             this->req_clear_wait = false;
         } else {
-            this->callbacks[0](this->lookup_req->id, nullptr);
             this->state = REFILL;
+            this->callbacks[0](this->lookup_req->id, nullptr);
         }
+        in_callback = false;
     });
     lookup_req = new CacheReq;
     lookup_req->id[1] = 0;
@@ -89,7 +91,7 @@ void ICache::flush(uint64_t addr, uint32_t asid) {
 
 void ICache::redirect() {
     idle_req_valid = false;
-    if (state == MISS || state == REFILL) {
+    if (state == MISS || state == REFILL && !in_callback) {
         req_clear_wait = true;
     }
     state = IDLE;

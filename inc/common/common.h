@@ -68,7 +68,18 @@ enum packed InstType {
     TYPE_NUM = 29
 };
 
+enum packed InstResult {
+    NORMAL = 0,
+    EXCEPTION = 1,
+    INTERRUPT = 2,
+    PRED_FAIL = 3,
+    MEM_REDIRECT = 4,
+    CSR_REDIRECT = 5,
+    RESULT_NUM = 6
+};
+
 extern std::string InstTypeName[];
+extern std::string InstResultName[];
 
 struct FetchStream {
     uint64_t tick;
@@ -142,11 +153,27 @@ static int clog2(int x) {
     return std::ceil(std::log2(x));
 }
 
-static int updateCounter(int old, bool taken, uint32_t mask, int min) {
-    uint32_t offset = uint32_t(old - min);
+/**
+ * update saturating counter
+ * @param old old value of the counter
+ * @param taken whether the branch is taken
+ * @param mask the mask for the counter, e.g. for 2-bit saturating counter, mask should be 0b111
+ * @param min the minimum value of the counter, e.g. for 2-bit saturating counter, min should be -4
+ * @param max the maximum value of the counter, e.g. for 2-bit saturating counter, max should be 3
+ */
+static int updateCounter(int old, bool taken, uint32_t mask, int min, int max) {
     int taken_val = (taken << 1) - 1;
-    offset = (offset + taken_val) & mask;
-    return int(offset) + min;
+    int new_val = old + taken_val;
+    
+    // Saturate to min if new_val is less than min
+    int below_min = (new_val < min);
+    new_val = (new_val & ~(-below_min)) | (min & (-below_min));
+    
+    // Saturate to max if new_val is greater than max
+    int above_max = (new_val > max);
+    new_val = (new_val & ~(-above_max)) | (max & (-above_max));
+    
+    return new_val;
 }
 
 #endif // COMMON_BUNDLES_H_

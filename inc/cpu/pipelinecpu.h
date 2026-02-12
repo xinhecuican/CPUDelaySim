@@ -19,6 +19,7 @@ private:
         bool taken;
         bool pred_error = false;
         uint8_t size;
+        uint8_t real_size;
         uint16_t mem_id;
         int bp_meta_idx;
         uint64_t pc;
@@ -26,6 +27,7 @@ private:
         uint64_t real_pc;
         uint64_t real_target;
         uint64_t paddr;
+        InstResult result;
 #ifdef DB_INST
         uint64_t start_tick;
         uint16_t delay[4];
@@ -64,6 +66,7 @@ private:
     void frontRedirect(Inst* inst);
     void brRedirect(Inst* inst);
     void excRedirect(Inst* inst);
+    bool preId(Inst* inst);
 
 private:
     uint64_t retire_size;
@@ -93,6 +96,8 @@ private:
     CacheReqWrapper* fetch_cache_req;
     uint64_t id_exception = 0;
     bool id_stall_valid = false;
+    bool id_stall_dec_more = false;
+    bool id_stall_inst_valid = false;
     Inst* id_inst;
     Inst* id_stall_inst;
     Inst** id_extra_insts;
@@ -117,16 +122,16 @@ private:
 #ifdef DB_INST
     struct  packed DBInstData {
         uint64_t start_tick;
-        uint64_t pc;
         uint64_t paddr;
         InstType type;
+        InstResult result;
         uint16_t delay[4];
 
         DBInstData(Inst* inst) {
             start_tick = inst->start_tick;
-            pc = inst->real_pc;
             paddr = inst->paddr;
             type = inst->info->type;
+            result = inst->result;
             *(uint64_t*)delay = *(uint64_t*)inst->delay;
         }
     };

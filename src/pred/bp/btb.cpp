@@ -24,8 +24,9 @@ void BTB::predict(BranchStream* stream, void* meta) {
     getIndexTag(stream->pc, meta_info->tag, meta_info->index);
     meta_info->hit = table[meta_info->index]->valid && table[meta_info->index]->tag == meta_info->tag;
     if (meta_info->hit) {
-        stream->type = table[meta_info->index]->type;
         stream->target = table[meta_info->index]->target;
+    } else {
+        stream->size = 4;
     }
 }
 
@@ -34,7 +35,7 @@ void BTB::getIndexTag(uint64_t pc, uint64_t& tag, int& index) {
     index = (pc >> offset) & index_mask;
 }
 
-void BTB::update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta) {
+void BTB::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {
     if (type >= BRANCH_START && type <= BRANCH_END) {
         uint64_t tag;
         int index;
@@ -42,7 +43,6 @@ void BTB::update(bool real_taken, uint64_t pc, uint64_t target, InstType type, v
         table[index]->valid = true;
         table[index]->tag = tag;
         table[index]->target = target;
-        table[index]->type = type;
     }
 }
 

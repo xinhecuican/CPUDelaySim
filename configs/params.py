@@ -26,6 +26,9 @@ class Predictor:
     cxx_header = "pred/predictor.h"
     retire_size = CPU.retire_size
 
+class PipePredictor(Predictor):
+    cxx_header = "pred/pipepredictor.h"
+
 class GHR:
     cxx_header = "pred/history/ghr.h"
     ghr_size = 64
@@ -39,6 +42,10 @@ class GShareBP:
     table_size = 1024
     bit_size = 2
     offset = 1
+
+class RAS:
+    cxx_header = "pred/bp/ras.h"
+    size = 16
 
 class BTB:
     cxx_header = "pred/bp/btb.h"

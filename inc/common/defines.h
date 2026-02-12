@@ -5,6 +5,7 @@
 // #define LOG_INST
 // #define LOG_MEM
 // #define LOG_DBHANDLER
+#define LOG_PRED
 
 #define DB_INST
 

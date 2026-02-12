@@ -22,6 +22,8 @@ public:
     void addMeta(const std::string& name, int size, const std::string& description);
     void setPrimaryKey(const std::string& name);
     void addMeta(json data);
+    void addResultLevel(InstResult result, int level);
+    void addResultLevels(int* levels, int size);
     void addTypeName();
     void init();
     void addData(uint8_t* buffer, uint32_t size);

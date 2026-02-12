@@ -5,7 +5,6 @@
 
 struct BTBEntry {
     bool valid;
-    InstType type;
     uint64_t tag;
     uint64_t target;
 };
@@ -16,7 +15,7 @@ public:
     void load() override;
     void afterLoad() override;
     void predict(BranchStream* stream, void* meta) override;
-    void update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta) override;
+    void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) override;
     int getMetaSize() override;
     
 private:

@@ -1,4 +1,6 @@
 #include "pred/predictor.h"
+#include "common/log.h"
+#include "config.h"
 
 Predictor::~Predictor() {
     for (int i = 0; i < retire_size; i++) {
@@ -51,9 +53,14 @@ void Predictor::afterLoad() {
         assert(bps[i]->getDelay() == pre_delay || bps[i]->getDelay() == pre_delay + 1);
         pre_delay = bps[i]->getDelay();
     }
+    bps_size = bps.size();
+
+#ifdef LOG_PRED
+    Log::init("pred", Config::getLogFilePath("pred.log"));
+#endif
 }
 
-int Predictor::predict(uint64_t pc, uint64_t& next_pc, uint8_t& size, bool& taken, bool stall) {
+int Predictor::predict(uint64_t pc, DecodeInfo* info, uint64_t& next_pc, uint8_t& size, bool& taken, bool stall) {
     if (bubble != 0) {
         bubble--;
     } else if (!pred_valid) {
@@ -75,63 +82,75 @@ int Predictor::predict(uint64_t pc, uint64_t& next_pc, uint8_t& size, bool& take
             switch (stream->type) {
                 case COND: {
                     if (stream->taken) metas[meta_idx]->pred_addr = stream->target; 
-                    taken = stream->taken;
+                    metas[meta_idx]->taken = stream->taken;
                     break;
                 }
                 case DIRECT:
                 case PUSH:
                     metas[meta_idx]->pred_addr = stream->target;
-                    taken = true;
+                    metas[meta_idx]->taken = true;
                     break;
                 case IND_CALL:
                 case IND_PUSH:
                 case INDIRECT: {
                     if (stream->indv) metas[meta_idx]->pred_addr = stream->ind_target;
                     else metas[meta_idx]->pred_addr = stream->target;
-                    taken = true;
+                    metas[meta_idx]->taken = true;
                     break;
                 }
                 case POP:
                 case POP_PUSH: {
                     if (stream->rasv) metas[meta_idx]->pred_addr = stream->ras_target;
                     else metas[meta_idx]->pred_addr = stream->target;
-                    taken = true;
+                    metas[meta_idx]->taken = true;
                     break;
                 }
                 default:  {
-                    taken = false;
+                    metas[meta_idx]->taken = false;
                     break;
                 }
             }
             if (pre_pc != metas[meta_idx]->pred_addr) bubble = i;
         }
         if (metas[meta_idx]->pred_addr == 0xdeadbeefdeadbeef) {
-            metas[meta_idx]->pred_addr = pc + 4;
+            metas[meta_idx]->pred_addr = pc + stream->size;
         }
-        history_manager->update(false, stream->taken, stream->target, stream->type, metas[meta_idx]->history_meta);
+        history_manager->update(true, stream->taken, metas[meta_idx]->pred_addr, stream->type, metas[meta_idx]->history_meta);
     }
 
     pred_valid = bubble == 0;
 
     if (!stall && pred_valid) {
         next_pc = metas[meta_idx]->pred_addr;
-        size = 4;
+        size = metas[meta_idx]->stream->size;
         int res = meta_idx;
         meta_idx = (meta_idx + 1) % retire_size;
         pred_valid = false;
+        taken = metas[meta_idx]->taken;
+        
+#ifdef LOG_PRED
+        if (taken) Log::trace("pred", "pred 0x{:x} 0x{:x} {} {}", 
+                    metas[meta_idx]->stream->pc, next_pc, size, (uint8_t)metas[meta_idx]->stream->type);
+#endif
         return res;
     }
     return -1;
 }
 
-void Predictor::redirect(bool real_taken, uint64_t real_pc, InstType type, int meta_idx) {
-    history_manager->update(true, real_taken, real_pc, type, metas[meta_idx]->history_meta);
+void Predictor::redirect(bool real_taken, uint64_t real_pc, int size, uint64_t target, InstType type, int meta_idx) {
+#ifdef LOG_PRED
+    Log::trace("pred", "redirect 0x{:x} 0x{:x} {} {}", real_pc, target, size, (uint8_t)type);
+#endif
+    history_manager->update(false, real_taken, real_pc, type, metas[meta_idx]->history_meta);
+    for (int i = 0; i < bps_size; i++) {
+        bps[i]->redirect(real_taken, real_pc, size, target, type, metas[meta_idx]->meta[i]);
+    }
     bubble = 0;
     pred_valid = false;
 }
 
-void Predictor::update(bool real_taken, uint64_t pc, uint64_t target, InstType type, int meta_idx) {
-    for (int i = 0; i < bps.size(); i++) {
-        bps[i]->update(real_taken, pc, target, type, metas[meta_idx]->meta[i]);
+void Predictor::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx) {
+    for (int i = 0; i < bps_size; i++) {
+        bps[i]->update(real_taken, pc, size, target, type, metas[meta_idx]->meta[i]);
     }
 }

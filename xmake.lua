@@ -76,6 +76,7 @@ target("CPUDelaySim")
     add_files("src/**.cpp|arch/**.cpp")
     add_includedirs("inc")
     set_pcxxheader("inc/common/common.h")
+    add_cxxflags("-mavx2")
     add_deps(arch .. "_decode")
     add_deps("parse_param")
     add_files("configs/" .. config .. "/obj/**.cpp")
@@ -109,7 +110,54 @@ target("riscv_decode")
 target("parse_param")
     set_kind("phony")
     on_load(function (target)
-        os.execv("python", {"./scripts/parse.py", "--filepath", "configs/" .. config})
+        local config_dir = "configs/" .. config
+        local obj_dir = config_dir .. "/obj"
+        local need_run = false
+        
+        -- 检查obj目录是否存在
+        if not os.isdir(obj_dir) then
+            need_run = true
+        else
+            -- 检查源文件是否比生成的文件更新
+            local source_files = {}
+            -- 添加params.py
+            table.insert(source_files, "configs/params.py")
+            -- 添加config目录下的所有.py文件
+            for _, file in ipairs(os.files(config_dir .. "/*.py")) do
+                table.insert(source_files, file)
+            end
+            -- 添加layer.xml
+            table.insert(source_files, config_dir .. "/layer.xml")
+            
+            -- 检查是否存在生成的文件
+            local generated_files = os.files(obj_dir .. "/*")
+            if #generated_files == 0 then
+                need_run = true
+            else
+                -- 检查每个源文件是否比任何生成的文件更新
+                for _, source_file in ipairs(source_files) do
+                    if os.isfile(source_file) then
+                        local source_mtime = os.mtime(source_file)
+                        for _, generated_file in ipairs(generated_files) do
+                            if os.isfile(generated_file) then
+                                local generated_mtime = os.mtime(generated_file)
+                                if source_mtime > generated_mtime then
+                                    need_run = true
+                                    break
+                                end
+                            end
+                        end
+                        if need_run then
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        if need_run then
+            os.execv("python", {"./scripts/parse.py", "--filepath", config_dir})
+        end
     end)
 --
 -- If you want to known more usage about xmake, please see https://xmake.io

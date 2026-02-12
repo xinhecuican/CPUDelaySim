@@ -37,3 +37,13 @@ std::string InstTypeName[] = {
     "FDIV",
     "FSQRT"
 };
+
+// Define InstResultName array
+std::string InstResultName[] = {
+    "NORMAL",
+    "EXC",
+    "INT",
+    "PRED_FAIL",
+    "MEM_REDIRECT",
+    "CSR_REDIRECT"
+};

@@ -50,6 +50,23 @@ void LogDB::addTypeName() {
     meta["type_name"] = ar;
 }
 
+void LogDB::addResultLevel(InstResult result, int level) {
+    if (!meta.contains("result_level")) {
+        meta["result_level"] = json::array();
+    }
+    meta["result_level"].push_back(
+        {{"n", InstResultName[result]}, {"l", level}}
+    );
+}
+
+void LogDB::addResultLevels(int* levels, int size) {
+    for (int i = 0; i < size; i++) {
+        addResultLevel((InstResult)i, levels[i]);
+    }
+}
+
+
+
 void LogDB::setPrimaryKey(const std::string& name) {
     meta["primary_key"] = name;
 }

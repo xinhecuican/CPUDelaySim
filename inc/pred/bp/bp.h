@@ -26,7 +26,8 @@ public:
      * @param meta The meta info, used in update.
      */
     virtual void predict(BranchStream* stream, void* meta) = 0;
-    virtual void update(bool real_taken, uint64_t pc, uint64_t target, InstType type, void* meta) = 0;
+    virtual void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {}
+    virtual void redirect(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {}
     virtual int getMetaSize() = 0;
     virtual void setHistoryManager(HistoryManager* history_manager) { this->history_manager = history_manager; }
 

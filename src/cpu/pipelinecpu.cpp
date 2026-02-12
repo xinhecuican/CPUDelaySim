@@ -40,12 +40,13 @@ void PipelineCPU::afterLoad() {
         CacheReqWrapper *req_wrapper = this->cache_req_list.pop();
         if (!this->id_valid) {
             this->id_valid = true;
-            this->id_inst = req_wrapper->inst;
-            this->id_remain_size += req_wrapper->inst->size;
+            bool finish = preId(req_wrapper->inst);
+            this->id_stall_valid = !finish;
+            this->id_stall_dec_more = !finish;
         } else {
-            assert(!this->id_stall_valid);
             this->id_stall_valid = true;
             this->id_stall_inst = req_wrapper->inst;
+            this->id_stall_inst_valid = true;
         }
     });
         
@@ -58,13 +59,15 @@ void PipelineCPU::afterLoad() {
     log_db = new LogDB("inst");
     log_db->addTypeName();
     log_db->addMeta("tick", 8);
-    log_db->addMeta("pc", 8);
     log_db->addMeta("paddr", 8);
     log_db->addMeta("type", 1);
+    log_db->addMeta("result", 1);
     log_db->addMeta("id", 2);
     log_db->addMeta("exe", 2);
     log_db->addMeta("mem", 2);
     log_db->addMeta("wb", 2);
+    int levels[] = {0, 5, 5, 5, 4, 3};
+    log_db->addResultLevels(levels, RESULT_NUM);
     log_db->init();
 #endif
 }
@@ -79,16 +82,18 @@ void PipelineCPU::exec() {
     }
     if (wb_valid) {
         if (Base::arch->exceptionValid(wb_inst->info->exception)) {
+            wb_inst->result = wb_inst->info->exception & IRQ_MASK ? InstResult::INTERRUPT : InstResult::EXCEPTION;
             excRedirect(wb_inst);
         }
-        wb_valid = false;
-        wb_inst->info->exception = Base::arch->getExceptionNone();
-        inst_count++;
-        wb_tick = getTick();
 #ifdef DB_INST
         DBInstData db_inst(wb_inst);
         log_db->addData<DBInstData>(&db_inst);
 #endif
+        wb_valid = false;
+        wb_inst->info->exception = Base::arch->getExceptionNone();
+        wb_inst->result = InstResult::NORMAL;
+        inst_count++;
+        wb_tick = getTick();
     }
     bool mem_end = false;
     if (mem_valid) {
@@ -155,10 +160,11 @@ void PipelineCPU::exec() {
                 case COND: {
                     if ((exe_inst->info->dst_data[1] ^ exe_inst->taken) || 
                         exe_inst->next_pc != exe_inst->real_target) {
+                        exe_inst->result = InstResult::PRED_FAIL;
                         brRedirect(exe_inst);
                     }
                     exe_end = true;
-                    predictor->update(exe_inst->info->dst_data[1], exe_inst->real_pc,
+                    predictor->update(exe_inst->info->dst_data[1], exe_inst->real_pc, exe_inst->real_size,
                                       exe_inst->real_target, exe_inst->info->type,
                                       exe_inst->bp_meta_idx);
                     break;
@@ -169,11 +175,12 @@ void PipelineCPU::exec() {
                 case POP:
                 case POP_PUSH:
                     if (exe_inst->next_pc != exe_inst->real_target) {
+                        exe_inst->result = InstResult::PRED_FAIL;
                         brRedirect(exe_inst);
                     }
                 case DIRECT:
                 case PUSH:
-                    predictor->update(true, exe_inst->real_pc, exe_inst->real_target,
+                    predictor->update(true, exe_inst->real_pc, exe_inst->real_size, exe_inst->real_target,
                                       exe_inst->info->type, exe_inst->bp_meta_idx);
                     exe_end = true;
                     break;
@@ -243,20 +250,12 @@ void PipelineCPU::exec() {
     }
 
     if (id_valid && !exe_valid) {
-        uint64_t id_paddr;
-        uint64_t exception = Base::arch->getExceptionNone();
-        Base::arch->translateAddr(pc, FETCH_TYPE::IFETCH, id_paddr, exception);
+        uint64_t exception = id_inst->info->exception;
         bool exc_valid = Base::arch->exceptionValid(exception);
         if (exc_valid) {
             Base::arch->handleException(exception, pc, id_inst->info);
-            id_remain_size = 0;
-        } else if (!id_wait_redirect) {
-            int inst_size = Base::arch->decode(pc, id_paddr, id_inst->info);
-            id_remain_size -= inst_size;
         }
         if (!id_wait_redirect) {
-            id_inst->real_pc = pc;
-            id_inst->paddr = id_paddr;
             id_inst->real_target = Base::arch->updateEnv();
             pc = id_inst->real_target;
 
@@ -266,23 +265,17 @@ void PipelineCPU::exec() {
             bool is_direct = id_inst->info->type == DIRECT || id_inst->info->type == PUSH;
             bool is_jump = id_inst->info->type > PUSH && id_inst->info->type <= BRANCH_END;
             bool is_branch = is_cond || is_jump || is_direct;
+            bool archFlush = Base::arch->needFlush(id_inst->info);
             if (Base::arch->exceptionValid(id_inst->info->exception)) {
                 id_wait_redirect = true;
-                id_remain_size = 0;
             } else if (is_jump) {
                 id_wait_redirect = !target_eq;
-                id_remain_size = 0;
             } else if (is_cond) {
                 id_wait_redirect = pred_error || !target_eq;
-                if (id_inst->info->dst_data[1])
-                    id_remain_size = 0;
-            } else if (is_direct) {
-                if (!target_eq) frontRedirect(id_inst);
-                else id_remain_size = 0;
-            } else if (Base::arch->needFlush(id_inst->info) || // satp
+            } else if (archFlush || // satp
                 !is_branch && id_inst->taken) { // predictor error
                 frontRedirect(id_inst);
-                id_remain_size = 0;
+                if (archFlush) id_inst->result = CSR_REDIRECT;
             } else if (!(id_inst->real_pc >= id_inst->pc && id_inst->real_pc < id_inst->pc + id_inst->size)){
                 Log::error(
                     "PipelineCPU::exec: ID stage PC changed from 0x{:x} to 0x{:x} without redirect",
@@ -301,22 +294,20 @@ void PipelineCPU::exec() {
         id_inst->delay[1] = getTick() - id_inst->start_tick;
 #endif
         exe_inst = id_inst;
-        if (id_remain_size <= 0) {
-            id_valid = false;
-        } else {
-            Inst *free_inst = id_extra_insts[id_extra_idx];
-            id_extra_idx = (id_extra_idx + 1) % retire_size;
-            free_inst->copy(id_inst);
-            id_inst = free_inst;
-        }
+        id_valid = false;
         exe_valid = true;
     }
 
     if (!id_valid && id_stall_valid) {
+        bool finish = preId(id_stall_inst);
         id_valid = true;
-        id_inst = id_stall_inst;
-        id_remain_size += id_inst->size;
-        id_stall_valid = false;
+        if (id_stall_dec_more) {
+            id_stall_dec_more = !finish;
+            id_stall_valid = !(finish && !id_stall_inst_valid);
+        } else if (id_stall_inst_valid) {
+            id_stall_inst_valid = !finish;
+            id_stall_valid = !finish;
+        }
     }
 
     CacheReqWrapper *req_wrapper = fetch_cache_req;
@@ -347,20 +338,24 @@ void PipelineCPU::exec() {
         }
     }
 
+    if (!fetch_valid) {
     req_wrapper = cache_req_list.back();
     req_wrapper->inst->pc = pred_pc;
     req_wrapper->inst->info->exception = Base::arch->getExceptionNone();
-    req_wrapper->inst->bp_meta_idx =
-        predictor->predict(req_wrapper->inst->pc, req_wrapper->inst->next_pc,
-                           req_wrapper->inst->size, req_wrapper->inst->taken, fetch_valid);
-    if (req_wrapper->inst->bp_meta_idx >= 0) {
-        pred_pc = req_wrapper->inst->next_pc;
+    // req_wrapper->inst->bp_meta_idx =
+    //     predictor->predict(req_wrapper->inst->pc, req_wrapper->inst->next_pc,
+    //                        req_wrapper->inst->size, req_wrapper->inst->taken, fetch_valid);
+    // if (req_wrapper->inst->bp_meta_idx >= 0) {
+        // pred_pc = req_wrapper->inst->next_pc;
+        pred_pc = req_wrapper->inst->pc + 4;
+        req_wrapper->inst->size = 4;
         fetch_cache_req = req_wrapper;
         cache_req_list.next();
         fetch_valid = true;
 #ifdef DB_INST
         req_wrapper->inst->start_tick = getTick();
 #endif
+    // }
     }
 
     Base::upTick();
@@ -375,9 +370,11 @@ PipelineCPU::CacheReqWrapper *PipelineCPU::initCacheReq() {
 
 void PipelineCPU::frontRedirect(Inst *inst) {
     id_stall_valid = false;
+    id_stall_dec_more = false;
+    id_stall_inst_valid = false;
     id_remain_size = 0;
     fetch_valid = false;
-    predictor->redirect(true, inst->real_target, DIRECT, inst->bp_meta_idx);
+    predictor->redirect(inst->taken, inst->real_pc, inst->real_size, inst->real_target, inst->info->type, inst->bp_meta_idx);
     icache->redirect();
     while (!cache_req_list.empty()) {
         cache_req_list.pop();
@@ -388,10 +385,12 @@ void PipelineCPU::frontRedirect(Inst *inst) {
 void PipelineCPU::brRedirect(Inst *inst) {
     id_valid = false;
     id_stall_valid = false;
+    id_stall_dec_more = false;
+    id_stall_inst_valid = false;
     id_remain_size = 0;
     id_wait_redirect = false;
     fetch_valid = false;
-    predictor->redirect(inst->info->dst_data[1], inst->real_target, inst->info->type,
+    predictor->redirect(inst->info->dst_data[1], inst->real_pc, inst->real_size, inst->real_target, inst->info->type,
                         inst->bp_meta_idx);
     icache->redirect();
     while (!cache_req_list.empty()) {
@@ -411,14 +410,51 @@ void PipelineCPU::excRedirect(Inst *inst) {
     exe_end = false;
     id_valid = false;
     id_stall_valid = false;
+    id_stall_dec_more = false;
+    id_stall_inst_valid = false;
     id_remain_size = 0;
     id_wait_redirect = false;
     fetch_valid = false;
-    predictor->redirect(false, inst->real_target, INT, inst->bp_meta_idx);
+    predictor->redirect(false, inst->real_pc, inst->real_size, inst->real_target, INT, inst->bp_meta_idx);
     icache->redirect();
     dcache->redirect();
     while (!cache_req_list.empty()) {
         cache_req_list.pop();
     }
     pred_pc = inst->real_target;
+}
+
+bool PipelineCPU::preId(Inst *inst) {
+    if (id_remain_size <= 0) {
+        id_inst = inst;
+        id_remain_size += inst->size;
+    } else {
+        Inst *free_inst = id_extra_insts[id_extra_idx];
+        id_extra_idx = (id_extra_idx + 1) % retire_size;
+        free_inst->copy(id_inst);
+        id_inst = free_inst;
+    }
+
+    uint64_t id_paddr;
+    uint64_t exception = Base::arch->getExceptionNone();
+    Base::arch->translateAddr(pc, FETCH_TYPE::IFETCH, id_inst->paddr, exception);
+    if (unlikely(id_inst->info->exception != exception)) {
+        Log::error("Exception {:x} {:x} at pc {}", exception, id_inst->info->exception, pc);
+    }
+    int inst_size = Base::arch->decode(pc, id_inst->paddr, id_inst->info);
+    id_inst->real_size = inst_size;
+    id_inst->real_pc = pc;
+    uint8_t size = 0;
+    id_inst->bp_meta_idx = predictor->predict(pc, id_inst->info, id_inst->next_pc, size, id_inst->taken, false);
+    if (id_inst->taken) {
+        id_inst->real_target = id_inst->next_pc;
+        frontRedirect(id_inst);
+    } else {
+        id_remain_size -= inst_size;
+    }
+
+    if (id_remain_size > 0) {
+        return false;
+    }
+    return true;
 }

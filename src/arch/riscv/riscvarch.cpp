@@ -343,7 +343,7 @@ xtval_end:;
                     case PUSH:
                     case POP:
                     case POP_PUSH:
-#ifdef LOG_PCf
+#ifdef LOG_PC
                         Log::trace("pc", "0x{:x}", info->dst_data[2]);
 #endif
                         return info->dst_data[2];

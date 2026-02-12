@@ -40,6 +40,7 @@ private:
     bool flush_valid = false;
     uint16_t flush_num;
     uint32_t flush_set;
+    bool in_callback = false;
 };
 
 REGISTER_CLASS(ICache)
