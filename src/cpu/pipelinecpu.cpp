@@ -57,7 +57,6 @@ void PipelineCPU::afterLoad() {
     predictor->afterLoad();
 #ifdef DB_INST
     log_db = new LogDB("inst");
-    log_db->addTypeName();
     log_db->addMeta("tick", 8);
     log_db->addMeta("paddr", 8);
     log_db->addMeta("type", 1);
@@ -66,8 +65,8 @@ void PipelineCPU::afterLoad() {
     log_db->addMeta("exe", 2);
     log_db->addMeta("mem", 2);
     log_db->addMeta("wb", 2);
-    int levels[] = {0, 5, 5, 5, 4, 3};
-    log_db->addResultLevels(levels, RESULT_NUM);
+    log_db->addMetaTypeName("result", InstResultName, RESULT_NUM);
+    log_db->addMetaTypeName("type", InstTypeName, TYPE_NUM);
     log_db->init();
 #endif
 }
@@ -436,10 +435,10 @@ bool PipelineCPU::preId(Inst *inst) {
     }
 
     uint64_t id_paddr;
-    uint64_t exception = Base::arch->getExceptionNone();
-    Base::arch->translateAddr(pc, FETCH_TYPE::IFETCH, id_inst->paddr, exception);
-    if (unlikely(id_inst->info->exception != exception)) {
-        Log::error("Exception {:x} {:x} at pc {}", exception, id_inst->info->exception, pc);
+    Base::arch->translateAddr(pc, FETCH_TYPE::IFETCH, id_inst->paddr, id_inst->info->exception);
+    if (Base::arch->exceptionValid(id_inst->info->exception)) {
+        Base::arch->handleException(id_inst->info->exception, pc, id_inst->info);
+        return true;
     }
     int inst_size = Base::arch->decode(pc, id_inst->paddr, id_inst->info);
     id_inst->real_size = inst_size;

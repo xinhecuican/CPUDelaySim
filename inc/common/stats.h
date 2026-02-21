@@ -8,6 +8,7 @@ class Stats {
 public:
     static void registerStat(std::any value, const std::string& name, const std::string& description);
     static void registerRatio(std::any divend, std::any divisor, const std::string& name, const std::string& description);
+    static std::any getStat(const std::string& name);
     static void writeback();
 
 private:

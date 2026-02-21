@@ -78,9 +78,18 @@ void Stats::writeback() {
         }
         
         if (valid) {
-            Log::stat("{:<20} {:>10} # {}", ratio.name, result, ratio.description);
+            Log::stat("{:<20} {:>10.5f} # {}", ratio.name, result, ratio.description);
         } else {
             Log::stat("{:<20} {:>10} # {} (invalid division)", ratio.name, "NaN", ratio.description);
         }
     }
+}
+
+std::any Stats::getStat(const std::string& name) {
+    for (auto& stat : instance().stats) {
+        if (stat.name == name) {
+            return stat.value;
+        }
+    }
+    return std::any();
 }

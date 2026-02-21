@@ -58,6 +58,18 @@ void Predictor::afterLoad() {
 #ifdef LOG_PRED
     Log::init("pred", Config::getLogFilePath("pred.log"));
 #endif
+    Stats::registerStat(&predTimes, "predTimes", "Prediction times");
+    Stats::registerStat(&condPredTimes, "condPredTimes", "Conditional branch prediction times");
+    Stats::registerStat(&indirectPredTimes, "indirectPredTimes", "Indirect branch prediction times");
+    Stats::registerStat(&callPredTimes, "callPredTimes", "Call/ret branch prediction times");
+
+    Stats::registerStat(&condErrorTimes, "condErrorTimes", "Conditional branch error times");
+    Stats::registerStat(&indirectErrorTimes, "indirectErrorTimes", "Indirect branch error times");
+    Stats::registerStat(&callErrorTimes, "callErrorTimes", "Call/ret branch error times");
+
+    Stats::registerRatio(&condErrorTimes, &condPredTimes, "condErrorRatio", "Conditional branch error ratio");
+    Stats::registerRatio(&indirectErrorTimes, &indirectPredTimes, "indirectErrorRatio", "Indirect branch error ratio");
+    Stats::registerRatio(&callErrorTimes, &callPredTimes, "callErrorRatio", "Call/ret branch error ratio");
 }
 
 int Predictor::predict(uint64_t pc, DecodeInfo* info, uint64_t& next_pc, uint8_t& size, bool& taken, bool stall) {
@@ -153,4 +165,24 @@ void Predictor::update(bool real_taken, uint64_t pc, int size, uint64_t target, 
     for (int i = 0; i < bps_size; i++) {
         bps[i]->update(real_taken, pc, size, target, type, metas[meta_idx]->meta[i]);
     }
+    switch (type) {
+        case COND:
+            condPredTimes++;
+            condErrorTimes += real_taken != metas[meta_idx]->taken;
+            break;
+        case INDIRECT:
+        case IND_CALL:
+        case IND_PUSH:
+            indirectPredTimes++;
+            indirectErrorTimes += metas[meta_idx]->pred_addr != target;
+            break;
+        case POP:
+        case POP_PUSH:
+            callPredTimes++;
+            callErrorTimes += metas[meta_idx]->pred_addr != target;
+            break;
+        default:
+            break;
+    }
+    predTimes++;
 }

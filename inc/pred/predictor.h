@@ -47,6 +47,15 @@ protected:
     BP*** bp_layers;
     int* bp_layers_size;
     int bps_size;
+
+    uint64_t predTimes = 0;
+    uint64_t condPredTimes = 0;
+    uint64_t indirectPredTimes = 0;
+    uint64_t callPredTimes = 0;
+
+    uint64_t condErrorTimes = 0;
+    uint64_t indirectErrorTimes = 0;
+    uint64_t callErrorTimes = 0;
 };
 
 #endif

@@ -42,26 +42,13 @@ void LogDB::addMeta(const std::string& name, int size, const std::string& descri
     );
 }
 
-void LogDB::addTypeName() {
-    auto ar = json::array();
-    for (int i = 0; i < TYPE_NUM; i++) {
-        ar.push_back(InstTypeName[i]);
+void LogDB::addMetaTypeName(const std::string& metaName, std::string* typeNames, int size) {
+    if (!meta.contains("type_names")) {
+        meta["type_names"] = json::object();
     }
-    meta["type_name"] = ar;
-}
-
-void LogDB::addResultLevel(InstResult result, int level) {
-    if (!meta.contains("result_level")) {
-        meta["result_level"] = json::array();
-    }
-    meta["result_level"].push_back(
-        {{"n", InstResultName[result]}, {"l", level}}
-    );
-}
-
-void LogDB::addResultLevels(int* levels, int size) {
+    meta["type_names"][metaName] = json::array();
     for (int i = 0; i < size; i++) {
-        addResultLevel((InstResult)i, levels[i]);
+        meta["type_names"][metaName].push_back(typeNames[i]);
     }
 }
 
