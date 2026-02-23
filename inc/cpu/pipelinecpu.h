@@ -32,10 +32,12 @@ private:
         uint64_t start_tick;
         uint16_t delay[4];
 #endif
+        uint64_t id;
         DecodeInfo* info;
 
         Inst() {
             info = new DecodeInfo();
+            result = InstResult::NORMAL;
         }
 
         ~Inst() {
@@ -121,6 +123,7 @@ private:
 
 #ifdef DB_INST
     struct  packed DBInstData {
+        uint64_t primary_key;
         uint64_t start_tick;
         uint64_t paddr;
         InstType type;
@@ -128,6 +131,7 @@ private:
         uint16_t delay[4];
 
         DBInstData(Inst* inst) {
+            primary_key = inst->id;
             start_tick = inst->start_tick;
             paddr = inst->paddr;
             type = inst->info->type;
@@ -136,6 +140,7 @@ private:
         }
     };
     LogDB* log_db;
+    uint64_t current_id = 0;
 #endif
 };
 

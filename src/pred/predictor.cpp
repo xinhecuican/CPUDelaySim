@@ -1,6 +1,7 @@
 #include "pred/predictor.h"
 #include "common/log.h"
 #include "config.h"
+#include "common/common.h"
 
 Predictor::~Predictor() {
     for (int i = 0; i < retire_size; i++) {
@@ -18,6 +19,9 @@ Predictor::~Predictor() {
     free(bp_layers);
     free(bp_layers_size);
     free(metas);
+#ifdef DB_PRED
+    free(db_info);
+#endif
 }
 
 void Predictor::afterLoad() {
@@ -70,6 +74,23 @@ void Predictor::afterLoad() {
     Stats::registerRatio(&condErrorTimes, &condPredTimes, "condErrorRatio", "Conditional branch error ratio");
     Stats::registerRatio(&indirectErrorTimes, &indirectPredTimes, "indirectErrorRatio", "Indirect branch error ratio");
     Stats::registerRatio(&callErrorTimes, &callPredTimes, "callErrorRatio", "Call/ret branch error ratio");
+
+#ifdef DB_PRED
+    log_db = new LogDB("pred");
+    log_db->addMeta("primary_key", 8);
+    log_db->addMeta("idx", 8);
+    log_db->addMeta("ghist", 8);
+    json relate_type;
+    relate_type["relate_type"] = json::array();
+    for (int i = BRANCH_START; i <= BRANCH_END; i++) {
+        relate_type["relate_type"].push_back(i);
+    }
+    log_db->addMeta(relate_type);
+    log_db->init();
+    db_info = (BPDBInfo*)malloc(sizeof(BPDBInfo));
+#else
+    log_db = nullptr;
+#endif
 }
 
 int Predictor::predict(uint64_t pc, DecodeInfo* info, uint64_t& next_pc, uint8_t& size, bool& taken, bool stall) {
@@ -161,10 +182,14 @@ void Predictor::redirect(bool real_taken, uint64_t real_pc, int size, uint64_t t
     pred_valid = false;
 }
 
-void Predictor::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx) {
+void Predictor::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx, uint64_t id) {
     for (int i = 0; i < bps_size; i++) {
-        bps[i]->update(real_taken, pc, size, target, type, metas[meta_idx]->meta[i]);
+        bps[i]->update(real_taken, pc, size, target, type, metas[meta_idx]->meta[i], db_info);
     }
+#ifdef DB_PRED
+    db_info->id = id;
+    log_db->addData<BPDBInfo>(db_info);
+#endif
     switch (type) {
         case COND:
             condPredTimes++;

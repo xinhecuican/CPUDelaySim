@@ -8,6 +8,7 @@
 // #define LOG_PRED
 
 #define DB_INST
+#define DB_PRED
 
 // #define DIFFTEST
 

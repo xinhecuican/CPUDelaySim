@@ -4,6 +4,7 @@
 #include "common/base.h"
 #include "pred/history/history.h"
 #include "pred/bp/bp.h"
+#include "common/dbhandler.h"
 
 class Predictor : public Base {
 public:
@@ -25,7 +26,7 @@ public:
     */
     virtual int predict(uint64_t pc, DecodeInfo* info, uint64_t& next_pc, uint8_t& size, bool& taken, bool stall);
     virtual void redirect(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx);
-    virtual void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx);
+    virtual void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, int meta_idx, uint64_t id);
 
 protected:
     int retire_size;
@@ -56,6 +57,9 @@ protected:
     uint64_t condErrorTimes = 0;
     uint64_t indirectErrorTimes = 0;
     uint64_t callErrorTimes = 0;
+
+    LogDB* log_db;
+    BPDBInfo* db_info;
 };
 
 #endif

@@ -193,5 +193,6 @@ void DBHandler::closeDB() {
     pool.wait();
     for (auto db : dbs) {
         db->close();
+        delete db;
     }
 }

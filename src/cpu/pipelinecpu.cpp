@@ -57,6 +57,7 @@ void PipelineCPU::afterLoad() {
     predictor->afterLoad();
 #ifdef DB_INST
     log_db = new LogDB("inst");
+    log_db->addMeta("primary_key", 8);
     log_db->addMeta("tick", 8);
     log_db->addMeta("paddr", 8);
     log_db->addMeta("type", 1);
@@ -67,12 +68,13 @@ void PipelineCPU::afterLoad() {
     log_db->addMeta("wb", 2);
     log_db->addMetaTypeName("result", InstResultName, RESULT_NUM);
     log_db->addMetaTypeName("type", InstTypeName, TYPE_NUM);
+    log_db->setPrimaryKey("primary_key");
     log_db->init();
 #endif
 }
 
 void PipelineCPU::exec() {
-    if (getTick() == 558546785) {
+    if (getTick() == 203) {
         Log::info("debug");
     }
     if (unlikely(getTick() - wb_tick > 5000)) {
@@ -127,6 +129,9 @@ void PipelineCPU::exec() {
                 exe_end = true;
             }
         } else if (!exe_end) {
+#ifdef DB_INST
+            exe_inst->id = current_id;
+#endif
             if (Base::arch->exceptionValid(exe_inst->info->exception)) {
                 exe_end = true;
             } else {
@@ -165,7 +170,7 @@ void PipelineCPU::exec() {
                     exe_end = true;
                     predictor->update(exe_inst->info->dst_data[1], exe_inst->real_pc, exe_inst->real_size,
                                       exe_inst->real_target, exe_inst->info->type,
-                                      exe_inst->bp_meta_idx);
+                                      exe_inst->bp_meta_idx, exe_inst->id);
                     break;
                 }
                 case INDIRECT:
@@ -180,7 +185,7 @@ void PipelineCPU::exec() {
                 case DIRECT:
                 case PUSH:
                     predictor->update(true, exe_inst->real_pc, exe_inst->real_size, exe_inst->real_target,
-                                      exe_inst->info->type, exe_inst->bp_meta_idx);
+                                      exe_inst->info->type, exe_inst->bp_meta_idx, exe_inst->id);
                     exe_end = true;
                     break;
                 case LOAD:
@@ -245,6 +250,9 @@ void PipelineCPU::exec() {
             exe_valid = false;
             mem_valid = true;
             mem_inst = exe_inst;
+#ifdef DB_INST
+            current_id++;
+#endif
         }
     }
 

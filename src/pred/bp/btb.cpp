@@ -35,7 +35,7 @@ void BTB::getIndexTag(uint64_t pc, uint64_t& tag, int& index) {
     index = (pc >> offset) & index_mask;
 }
 
-void BTB::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {
+void BTB::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta, BPDBInfo* db_info) {
     if (type >= BRANCH_START && type <= BRANCH_END) {
         uint64_t tag;
         int index;
@@ -43,6 +43,9 @@ void BTB::update(bool real_taken, uint64_t pc, int size, uint64_t target, InstTy
         table[index]->valid = true;
         table[index]->tag = tag;
         table[index]->target = target;
+#ifdef DB_PRED
+        db_info->idx = tag << 32 | index;
+#endif
     }
 }
 

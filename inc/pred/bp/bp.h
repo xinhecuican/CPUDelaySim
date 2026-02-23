@@ -15,6 +15,12 @@ struct BranchStream {
     uint64_t ras_target;
 };
 
+struct BPDBInfo {
+    uint64_t id;
+    uint64_t idx;
+    uint64_t ghist;
+};
+
 class BP : public Base {
 public:
     virtual ~BP() = default;
@@ -26,7 +32,7 @@ public:
      * @param meta The meta info, used in update.
      */
     virtual void predict(BranchStream* stream, void* meta) = 0;
-    virtual void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {}
+    virtual void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta, BPDBInfo* db_info) {}
     virtual void redirect(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta) {}
     virtual int getMetaSize() = 0;
     virtual void setHistoryManager(HistoryManager* history_manager) { this->history_manager = history_manager; }

@@ -9,7 +9,7 @@ public:
     void load() override;
     void afterLoad() override;
     void predict(BranchStream* stream, void* meta) override;
-    void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta_info) override;
+    void update(bool real_taken, uint64_t pc, int size, uint64_t target, InstType type, void* meta_info, BPDBInfo* db_info) override;
     int getMetaSize() override;
 
 private:
